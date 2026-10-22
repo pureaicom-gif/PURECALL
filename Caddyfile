@@ -1,0 +1,3 @@
+{$PURE_DOMAIN} {
+    reverse_proxy pure:3000
+}

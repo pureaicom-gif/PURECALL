@@ -1,0 +1,32 @@
+name: Publish PURE Android APK
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Build PURE APK
+        working-directory: android
+        env:
+          PURE_SERVER_URL: ${{ vars.PURE_SERVER_URL }}
+        run: |
+          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleDebug -PPURE_SERVER_URL="$PURE_SERVER_URL"
+          cp app/build/outputs/apk/debug/app-debug.apk ../PURE-0.8.0.apk
+      - uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: PURE-0.8.0.apk

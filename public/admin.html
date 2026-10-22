@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PURE — แผงควบคุมผู้ดูแลระบบ (Admin Console)</title>
+  <link rel="stylesheet" href="/admin.css">
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <h1>PURE <span class="badge-admin"> ADMIN CONSOLE</span></h1>
+    <span class="badge-online"><span class="status-dot"></span> ออนไลน์ (Port 3000)</span>
+  </div>
+  <div class="header-actions is-hidden" id="user-actions">
+    <span id="current-admin-name" class="muted current-admin-name"></span>
+    <button class="btn-secondary btn-sm" data-admin-command="home"> ไปหน้าแชตหลัก </button>
+    <button class="btn-secondary btn-sm" data-admin-command="logout"> ออกจากระบบ</button>
+  </div>
+</header>
+
+<div class="container">
+  <!-- Auth Screen if not logged in -->
+  <div id="auth-screen" class="is-hidden">
+    <div class="auth-box">
+      
+      <h2>เข้าสู่ระบบผู้ดูแลระบบ (Admin)</h2>
+      <p class="muted auth-subtitle">กรุณากรอกรหัสผ่านบัญชีแอดมินเพื่อเข้าถึงแผงควบคุม</p>
+      <form id="admin-login-form">
+        <label>PURE ID (ชื่อผู้ใช้)</label>
+        <input id="login-handle" placeholder="เช่น pureadmin" required autocomplete="username">
+        <label>รหัสผ่าน</label>
+        <input id="login-password" type="password" placeholder="รหัสผ่านแอดมิน" required autocomplete="current-password">
+        <p id="login-err" class="login-error is-hidden"></p>
+        <button class="btn-primary login-button" id="login-btn">เข้าสู่ระบบแอดมิน </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Admin Main Dashboard -->
+  <div id="admin-main" class="is-hidden">
+    <section class="dashboard-intro"><div><span class="dashboard-kicker">PURE / ADMINISTRATION</span><h2>จัดการระบบได้ในหน้าเดียว</h2><p>สถานะผู้ใช้ การเชื่อมต่อ และเครื่องมือดูแล PURE</p></div><div class="dashboard-actions"><span class="dashboard-status" id="dashboard-status">กำลังตรวจสอบสถานะ…</span><button class="btn-secondary btn-sm" type="button" data-admin-command="refresh">อัปเดตข้อมูล</button></div></section>
+    <div class="nav-tabs" role="tablist" aria-label="ส่วนจัดการ PURE">
+      <button class="tab-btn active" role="tab" aria-selected="true" data-tab="overview">ภาพรวม</button>
+      <button class="tab-btn" role="tab" aria-selected="false" data-tab="users">ผู้ใช้และบัญชี</button>
+      <button class="tab-btn" role="tab" aria-selected="false" data-tab="ai">สถานะ AI</button>
+      <button class="tab-btn" role="tab" aria-selected="false" data-tab="broadcast">ประกาศถึงผู้ใช้</button>
+    </div>
+
+    <!-- Tab 1: Overview -->
+    <div id="tab-overview" class="tab-content active">
+      <div class="metrics-grid">
+        <div class="metric-card">
+          <div class="metric-val" id="stat-users">0</div>
+          <div class="metric-label">ผู้ใช้งานทั้งหมด</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-val metric-online" id="stat-online">0</div>
+          <div class="metric-label">ออนไลน์ขณะนี้</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-val" id="stat-messages">0</div>
+          <div class="metric-label">ข้อความทั้งหมด</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-val" id="stat-files">0</div>
+          <div class="metric-label">ไฟล์ในระบบ</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-val" id="stat-pets">0</div>
+          <div class="metric-label">สัตว์เลี้ยงในระบบ</div>
+        </div>
+      </div>
+
+      <!-- Mobile & Internet Connection URLs Card -->
+      <div class="card network-card">
+        <div class="card-title">
+          <span class="network-section-title"> ลิงก์สำหรับเข้าใช้งานบนมือถือ (Mobile App & Web)</span>
+          <button class="btn-secondary btn-sm" data-admin-command="refresh"> อัปเดตลิงก์</button>
+        </div>
+        <div class="network-details">
+          <div class="tunnel-card">
+            <div class="network-card-heading">
+              <strong class="tunnel-title"> อินเทอร์เน็ต (Cloudflare HTTPS) — ลิงก์หลักสำหรับแอปมือถือ</strong>
+              <span id="tunnel-badge" class="tunnel-badge">กำลังตรวจสอบ...</span>
+            </div>
+            <p class="network-help">ใช้ได้จากทุกที่ทั่วโลก ทั้งเน็ตมือถือ 4G/5G และ Wi-Fi (ก๊อปปี้ไปวางในแอป PURE บนมือถือ)</p>
+            <div class="network-url-row">
+              <input id="net-tunnel-url" readonly value="กำลังโหลด..." class="tunnel-url">
+              <button class="btn-primary btn-sm url-copy-button" data-admin-command="copy-tunnel"> คัดลอกลิงก์</button>
+            </div>
+          </div>
+          <div class="lan-card">
+            <div class="network-card-heading">
+              <strong class="lan-title"> Wi-Fi ในบ้าน (LAN IP)</strong>
+              <span class="lan-badge">วง Wi-Fi เดียวกัน</span>
+            </div>
+            <p class="network-help">สำหรับเครื่องที่เชื่อมต่อกับ Wi-Fi เดียวกับคอมพิวเตอร์เครื่องนี้</p>
+            <div class="network-url-row">
+              <input id="net-lan-url" readonly value="กำลังโหลด..." class="lan-url">
+              <button class="btn-secondary btn-sm url-copy-button" data-admin-command="copy-lan"> คัดลอกลิงก์</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">
+          <span> สถานะการทำงานของเซิร์ฟเวอร์</span>
+          <button class="btn-secondary btn-sm" data-admin-command="refresh"> รีเฟรชข้อมูล</button>
+        </div>
+        <div class="diag-grid">
+          <div class="diag-item">
+            <span>ระยะเวลาเปิดทำงาน (Uptime)</span>
+            <strong id="diag-uptime">-</strong>
+          </div>
+          <div class="diag-item">
+            <span>หน่วยความจำ RAM (Node RSS)</span>
+            <strong id="diag-ram">-</strong>
+          </div>
+          <div class="diag-item">
+            <span>Node.js / ระบบปฏิบัติการ</span>
+            <strong id="diag-node">-</strong>
+          </div>
+          <div class="diag-item">
+            <span>โมเดล AI ที่ใช้งาน</span>
+            <strong id="diag-model" class="model-highlight">-</strong>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab 2: Users -->
+    <div id="tab-users" class="tab-content">
+      <div class="card">
+        <div class="card-title">
+          <span>รายชื่อผู้ใช้งานทั้งหมด (<span id="user-count-badge">0</span> บัญชี)</span>
+          <input id="search-user" type="search" placeholder="ค้นหา PURE ID หรือชื่อ" class="user-search">
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>PURE ID</th>
+                <th>ชื่อที่แสดง</th>
+                <th>สถานะ</th>
+                <th>สิทธิ์</th>
+                <th>วันที่สร้าง</th>
+                <th>จัดการ</th>
+              </tr>
+            </thead>
+            <tbody id="user-tbody">
+              <tr><td colspan="6" class="muted text-center">กำลังโหลดรายชื่อ...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab 3: AI -->
+    <div id="tab-ai" class="tab-content">
+      <div class="card">
+        <div class="card-title">
+          <span> สถานะ PURE AI Engine</span>
+          <button class="btn-gold btn-sm" id="btn-scan-ai" data-admin-command="scan-ai"> บังคับสแกนโมเดลใหม่</button>
+        </div>
+        <div class="diag-grid">
+          <div class="diag-item">
+            <span>สถานะ API Key</span>
+            <strong id="ai-key-status">-</strong>
+          </div>
+          <div class="diag-item">
+            <span>โมเดลที่เลือกใช้งาน (Active)</span>
+            <strong id="ai-active-model" class="model-highlight">-</strong>
+          </div>
+          <div class="diag-item">
+            <span>โมเดลสำรอง (Fallback)</span>
+            <strong id="ai-fallback-model">-</strong>
+          </div>
+          <div class="diag-item">
+            <span>สแกนล่าสุดเมื่อ</span>
+            <strong id="ai-last-scan">-</strong>
+          </div>
+        </div>
+        <div class="ai-catalog-section">
+          <h4 class="ai-catalog-title">โมเดลทั้งหมดที่ตรวจพบบนระบบ PURE AI:</h4>
+          <div id="ai-catalog-list" class="ai-catalog-list"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab 4: Broadcast -->
+    <div id="tab-broadcast" class="tab-content">
+      <div class="card">
+        <div class="card-title"> ประกาศข้อความระบบ (System Broadcast)</div>
+        <p class="admin-section-note">ข้อความนี้จะปรากฏเป็นการแจ้งเตือนบนหน้าจอของผู้ใช้ที่ออนไลน์อยู่ ตรวจทานข้อความก่อนส่ง</p>
+        <textarea id="broadcast-msg" rows="3" placeholder="พิมพ์ข้อความประกาศ เช่น เซิร์ฟเวอร์จะปิดปรับปรุงเวลา..." class="broadcast-message"></textarea>
+        <button class="btn-primary" data-admin-command="send-broadcast"> ส่งประกาศทันที</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script src="/admin.js" defer></script>
+</body>
+</html>
