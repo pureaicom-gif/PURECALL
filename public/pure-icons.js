@@ -1,0 +1,9 @@
+import {drawPetScene} from './pet-renderer.js';
+const svg=name=>{const s=document.createElementNS('http://www.w3.org/2000/svg','svg');s.classList.add('ui-symbol');s.setAttribute('aria-hidden','true');const use=document.createElementNS(s.namespaceURI,'use');use.setAttribute('href','#'+name);s.append(use);return s;};
+const decorate=()=>{
+ for(const button of document.querySelectorAll('[data-species]:not([data-icon-ready])')){button.dataset.iconReady='1';const canvas=document.createElement('canvas');canvas.width=420;canvas.height=380;canvas.className='pet-choice-canvas';const span=button.querySelector('span');span?.replaceChildren(canvas);drawPetScene(canvas.getContext('2d'),{kind:button.dataset.species,skin:'snow'},0,{});}
+ for(const button of document.querySelectorAll('[data-skin]:not([data-icon-ready])')){button.dataset.iconReady='1';button.querySelector('.skin-swatch')?.replaceChildren(svg(({snow:'paw',midnight:'spark',panda:'paw',astro:'spark',wizard:'spark',crown:'user',sakura:'heart'})[button.dataset.skin]||'paw'));}
+ for(const selector of ['#admin-popout','#admin-rescan','#copy-id','#profile-show-qr','#sound-preview','#my-timeline','#secretary-start','#pet-record','#btn-create-group']){const b=document.querySelector(selector);if(b&&!b.querySelector('svg'))b.prepend(svg(selector.includes('admin')?'user':selector.includes('qr')?'qr':selector.includes('secretary')||selector.includes('record')?'mic':selector.includes('group')?'users':'spark'));}
+ for(const b of document.querySelectorAll('.pet-action:not([data-icon-ready])')){b.dataset.iconReady='1';b.querySelector('b')?.replaceChildren(svg(({feed:'heart',play:'paw',wash:'spark',sleep:'user'})[b.dataset.action]||'paw'));}
+};
+let queued=false;new MutationObserver(()=>{if(!queued){queued=true;queueMicrotask(()=>{queued=false;decorate();});}}).observe(document.body,{childList:true,subtree:true});decorate();

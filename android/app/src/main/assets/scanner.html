@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>สแกน QR Code เซิร์ฟเวอร์</title>
+  <script src="jsqr.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+    body {
+      background: #000;
+      color: #f0f3f8;
+      font-family: system-ui, -apple-system, sans-serif;
+      overflow: hidden;
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+    }
+    #video {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      object-fit: cover;
+      z-index: 1;
+    }
+    #canvas { display: none; }
+    .overlay {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      z-index: 2;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      align-items: center;
+      padding: 30px 20px 40px;
+      pointer-events: none;
+    }
+    .header {
+      background: rgba(15, 18, 24, 0.85);
+      border: 1px solid rgba(255,255,255,0.1);
+      backdrop-filter: blur(10px);
+      padding: 12px 24px;
+      border-radius: 30px;
+      text-align: center;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+      pointer-events: auto;
+    }
+    .header h2 { font-size: 16px; color: #4ade80; margin-bottom: 2px; }
+    .header p { font-size: 12px; color: #a0aec0; }
+    
+    .scanner-box-wrapper {
+      position: relative;
+      width: 260px;
+      height: 260px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .scanner-box {
+      width: 100%;
+      height: 100%;
+      position: relative;
+      border: 2px solid rgba(255, 255, 255, 0.2);
+      border-radius: 20px;
+      box-shadow: 0 0 0 4000px rgba(0, 0, 0, 0.55);
+      overflow: hidden;
+    }
+    /* Reticle Corners */
+    .corner {
+      position: absolute;
+      width: 24px;
+      height: 24px;
+      border-color: #4ade80;
+      border-style: solid;
+      border-width: 0;
+    }
+    .tl { top: 0; left: 0; border-top-width: 4px; border-left-width: 4px; border-top-left-radius: 18px; }
+    .tr { top: 0; right: 0; border-top-width: 4px; border-right-width: 4px; border-top-right-radius: 18px; }
+    .bl { bottom: 0; left: 0; border-bottom-width: 4px; border-left-width: 4px; border-bottom-left-radius: 18px; }
+    .br { bottom: 0; right: 0; border-bottom-width: 4px; border-right-width: 4px; border-bottom-right-radius: 18px; }
+    
+    /* Sweeping Scan Line */
+    .scan-beam {
+      position: absolute;
+      width: 100%;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, #4ade80, #ffd166, #4ade80, transparent);
+      box-shadow: 0 0 12px #4ade80;
+      top: 0;
+      animation: scan 2s infinite ease-in-out alternate;
+    }
+    @keyframes scan {
+      0% { top: 4%; }
+      100% { top: 96%; }
+    }
+
+    .footer {
+      display: flex;
+      gap: 14px;
+      pointer-events: auto;
+    }
+    .btn {
+      background: rgba(22, 27, 34, 0.85);
+      color: #f0f3f8;
+      border: 1px solid rgba(255,255,255,0.15);
+      backdrop-filter: blur(8px);
+      padding: 12px 20px;
+      border-radius: 24px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.2s;
+    }
+    .btn:active { transform: scale(0.96); background: #323b49; }
+    .btn-close { background: rgba(50, 20, 24, 0.85); border-color: rgba(248, 113, 113, 0.4); color: #f87171; }
+
+    .err-msg {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: #181c24;
+      border: 1px solid #3b4252;
+      border-radius: 16px;
+      padding: 24px;
+      text-align: center;
+      max-width: 85%;
+      z-index: 10;
+      display: none;
+    }
+    .err-msg h3 { color: #f87171; margin-bottom: 8px; font-size: 16px; }
+    .err-msg p { color: #cbd5e1; font-size: 13px; margin-bottom: 16px; line-height: 1.5; }
+  </style>
+</head>
+<body>
+  <video id="video" playsinline muted autoplay></video>
+  <canvas id="canvas"></canvas>
+
+  <div class="overlay">
+    <div class="header">
+      <h2>📷 สแกน QR Code</h2>
+      <p>ส่องกล้องไปที่ QR Code เซิร์ฟเวอร์ หรือ QR Code เพื่อน</p>
+    </div>
+
+    <div class="scanner-box-wrapper">
+      <div class="scanner-box">
+        <div class="corner tl"></div>
+        <div class="corner tr"></div>
+        <div class="corner bl"></div>
+        <div class="corner br"></div>
+        <div class="scan-beam"></div>
+      </div>
+    </div>
+
+    <div class="footer">
+      <button class="btn" id="btn-flip">🔄 สลับกล้อง</button>
+      <label class="btn" style="cursor:pointer;">
+        🖼️ เลือกรูป
+        <input type="file" id="file-input" accept="image/*" style="display:none;">
+      </label>
+      <button class="btn btn-close" id="btn-close">✕ ยกเลิก</button>
+    </div>
+  </div>
+
+  <div class="err-msg" id="err-box">
+    <h3>⚠️ ไม่สามารถเปิดกล้องได้</h3>
+    <p id="err-desc">กรุณาอนุญาตการเข้าถึงกล้องถ่ายรูปในการตั้งค่าแอป เพื่อให้สามารถสแกน QR Code ได้</p>
+    <div style="display:flex;gap:10px;justify-content:center;">
+      <button class="btn" onclick="startCamera()">ลองใหม่อีกครั้ง</button>
+      <button class="btn btn-close" onclick="closeScanner()">ยกเลิก</button>
+    </div>
+  </div>
+
+  <script>
+    let currentFacingMode = 'environment';
+    let stream = null;
+    let scanning = true;
+    let barcodeDetector = null;
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+    // Try initializing BarcodeDetector if available
+    if ('BarcodeDetector' in window) {
+      try {
+        barcodeDetector = new BarcodeDetector({ formats: ['qr_code'] });
+      } catch (e) {
+        barcodeDetector = null;
+      }
+    }
+
+    function beep() {
+      try {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(880, audioCtx.currentTime); // A5
+        gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.15);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.15);
+      } catch (e) {}
+    }
+
+    function onFound(qrData) {
+      if (!scanning) return;
+      scanning = false;
+      beep();
+      stopCamera();
+
+      // Send to Java
+      if (window.PureScanner && window.PureScanner.onScanned) {
+        window.PureScanner.onScanned(qrData);
+      } else {
+        alert("พบ QR Code: " + qrData);
+      }
+    }
+
+    function closeScanner() {
+      scanning = false;
+      stopCamera();
+      if (window.PureScanner && window.PureScanner.closeScanner) {
+        window.PureScanner.closeScanner();
+      }
+    }
+
+    async function startCamera() {
+      document.getElementById('err-box').style.display = 'none';
+      stopCamera();
+      scanning = true;
+
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: currentFacingMode,
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+          },
+          audio: false
+        });
+        video.srcObject = stream;
+        await video.play();
+        requestAnimationFrame(tick);
+      } catch (err) {
+        console.error("Camera error:", err);
+        document.getElementById('err-desc').textContent = "ไม่สามารถเปิดกล้องได้: " + (err.message || err.name);
+        document.getElementById('err-box').style.display = 'block';
+      }
+    }
+
+    function stopCamera() {
+      if (stream) {
+        stream.getTracks().forEach(t => t.stop());
+        stream = null;
+      }
+    }
+
+    async function tick() {
+      if (!scanning) return;
+
+      if (video.readyState === video.HAVE_ENOUGH_DATA) {
+        // Option 1: Native BarcodeDetector
+        if (barcodeDetector) {
+          try {
+            const barcodes = await barcodeDetector.detect(video);
+            if (barcodes.length > 0 && barcodes[0].rawValue) {
+              onFound(barcodes[0].rawValue);
+              return;
+            }
+          } catch (e) {}
+        }
+
+        // Option 2: jsQR fallback
+        if (window.jsQR) {
+          const w = Math.min(video.videoWidth, 640);
+          const h = Math.min(video.videoHeight, 480);
+          if (w > 0 && h > 0) {
+            canvas.width = w;
+            canvas.height = h;
+            ctx.drawImage(video, 0, 0, w, h);
+            const imageData = ctx.getImageData(0, 0, w, h);
+            const code = jsQR(imageData.data, imageData.width, imageData.height, {
+              inversionAttempts: "dontInvert"
+            });
+            if (code && code.data) {
+              onFound(code.data);
+              return;
+            }
+          }
+        }
+      }
+
+      if (scanning) {
+        requestAnimationFrame(tick);
+      }
+    }
+
+    // Flip camera
+    document.getElementById('btn-flip').onclick = () => {
+      currentFacingMode = currentFacingMode === 'environment' ? 'user' : 'environment';
+      startCamera();
+    };
+
+    // Close button
+    document.getElementById('btn-close').onclick = closeScanner;
+
+    // Pick image file
+    document.getElementById('file-input').onchange = (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        const img = new Image();
+        img.onload = () => {
+          canvas.width = img.width;
+          canvas.height = img.height;
+          ctx.drawImage(img, 0, 0);
+          const imageData = ctx.getImageData(0, 0, img.width, img.height);
+          if (window.jsQR) {
+            const code = jsQR(imageData.data, imageData.width, imageData.height);
+            if (code && code.data) {
+              onFound(code.data);
+              return;
+            }
+          }
+          alert("ไม่พบ QR Code ในรูปภาพที่เลือก");
+        };
+        img.src = reader.result;
+      };
+      reader.readAsDataURL(file);
+    };
+
+    // Auto-start on load
+    window.addEventListener('load', () => {
+      setTimeout(startCamera, 300);
+    });
+  </script>
+</body>
+</html>

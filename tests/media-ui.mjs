@@ -1,0 +1,28 @@
+import {chromium} from '@playwright/test';
+import assert from 'node:assert/strict';
+import {mkdtempSync,rmSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {createPureServer} from '../server/index.js';
+const dir=mkdtempSync(join(tmpdir(),'pure-media-'));let aiCalls=0;
+const server=createPureServer({dataDir:dir,scan:false,gemini:{status:()=>({configured:true}),scan(){},async generateImage(_p,{image}){aiCalls++;return {buffer:Buffer.from(image.data,'base64'),mime:image.mime};}}});
+await new Promise(r=>server.http.listen(0,'127.0.0.1',r));const base='http://127.0.0.1:'+server.http.address().port,browser=await chromium.launch({channel:'chrome',headless:true});
+try{
+ const a=await browser.newContext({viewport:{width:390,height:844}}),b=await browser.newContext(),p=await a.newPage(),q=await b.newPage(),errors=[];p.on('pageerror',e=>errors.push(e.message));q.on('pageerror',e=>errors.push(e.message));
+ const signup=async(ctx,handle)=>{const r=await ctx.request.post(base+'/api/register',{data:{handle,name:handle,password:'media-test-123'}});assert.equal(r.status(),201);return (await r.json()).user;};
+ const ua=await signup(a,'media_alice'),ub=await signup(b,'media_bob');
+ await a.request.post(base+'/api/friends',{data:{id:ub.id}});
+ // Accept through UI so request contracts are exercised exactly as a user does.
+ await p.goto(base);await q.goto(base);await q.locator('[data-tab="friends"]').click();await q.locator('[data-accept]').click();await q.locator('[data-chat]').click();await p.locator('[data-tab="friends"]').click();await p.locator('[data-chat]').click();
+ await p.locator('#message-input').fill('กำลังพิมพ์ข้อความ');await q.locator('#typing .typing-dots').waitFor();await p.locator('#message-input').fill('');
+ await p.locator('#sticker-open').click();await p.locator('[data-sticker="hello"]').click();await p.screenshot({path:'docs/screenshots/42-stickers-mobile.png'});await p.locator('.sticker-send').click();await q.locator('#messages img').waitFor();assert.equal(aiCalls,0);
+ const image=await p.evaluate(()=>{const c=document.createElement('canvas');c.width=600;c.height=400;const x=c.getContext('2d');x.fillStyle='#fd7845';x.fillRect(0,0,600,400);x.fillStyle='#f5cf9f';x.beginPath();x.arc(300,200,100,0,Math.PI*2);x.fill();return c.toDataURL().split(',')[1];});
+ await p.locator('#file-input').setInputFiles({name:'photo.png',mimeType:'image/png',buffer:Buffer.from(image,'base64')});await p.locator('.pure-photo-editor[open]').waitFor();assert.equal(aiCalls,0);await p.locator('[data-crop="square"]').click();assert.equal(await p.locator('[data-output-w]').inputValue(),await p.locator('[data-output-h]').inputValue());const frame=await p.locator('.crop-frame').boundingBox();await p.mouse.move(frame.x+frame.width/2,frame.y+frame.height/2);await p.mouse.down();await p.mouse.move(frame.x+frame.width/2+20,frame.y+frame.height/2+10);await p.mouse.up();await p.locator('[data-ratio-w]').fill('3');await p.locator('[data-ratio-h]').fill('2');await p.locator('[data-custom-crop]').click();await p.locator('[data-output-w]').fill('300');await p.locator('[data-output-h]').fill('200');await p.locator('[data-preset="mono"]').click();await p.locator('.pure-photo-editor').evaluate(e=>e.scrollTop=0);await p.screenshot({animations:'disabled',path:'docs/screenshots/43-photo-studio-mobile.png'});await p.locator('[data-enhance]').click();await p.waitForFunction(()=>document.querySelector('.photo-error')?.textContent.includes('ปรับภาพแล้ว'));assert.equal(aiCalls,1);await p.locator('[data-save]').click();await q.waitForFunction(()=>document.querySelectorAll('#messages img').length===2);await q.locator('.media-preview-trigger[aria-label="ดูภาพ photo-pure.png"]').click();await q.locator('#media-viewer[open]').waitFor();assert.equal(await q.locator('#media-viewer-stage img').count(),1);assert.match(await q.locator('#media-viewer-download').getAttribute('href'),/download=1/);await q.locator('[data-close="media-viewer"]').click();
+ const r=await a.request.post(base+'/api/groups',{data:{name:'PURE Studio',memberIds:[ub.id]}});assert.equal(r.status(),201);const group=(await r.json()).group;
+ await b.request.post(base+'/api/groups/'+group.id+'/invite-response',{data:{accept:true}});await p.reload();await q.reload();for(const page of [p,q])await page.locator('#filter-groups').click();await p.locator(`[data-group="${group.id}"]`).click();await q.locator(`[data-group="${group.id}"]`).click();
+ await p.locator('#message-input').fill('กำลังพิมพ์ในกลุ่ม');await q.locator('#typing .typing-dots').waitFor();await p.locator('#message-input').fill('');
+ await p.locator('#sticker-open').click();await p.locator('[data-sticker="cheer"]').click();await p.locator('.sticker-send').click();await q.locator('#messages img').waitFor();
+ const messages=(await (await a.request.get(base+'/api/groups/'+group.id+'/messages')).json()).messages;assert.equal(messages.length,1);const url="/api/files/"+messages[0].file.id;assert.equal((await b.request.get(base+url)).status(),200);
+ const outsider=await browser.newContext();await signup(outsider,'media_outsider');assert.equal((await outsider.request.get(base+url)).status(),404);assert.equal((await outsider.request.post(base+'/api/groups/'+group.id+'/files',{multipart:{file:{name:'bad.txt',mimeType:'text/plain',buffer:Buffer.from('bad')}}})).status(),403);
+ assert.deepEqual(errors,[]);assert.ok(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));console.log('PASS media: direct/group stickers realtime, local photo edit + explicit AI, group file privacy, mobile layout');
+}finally{await browser.close();await server.close();rmSync(dir,{recursive:true,force:true});}

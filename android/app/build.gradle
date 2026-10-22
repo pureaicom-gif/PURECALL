@@ -1,0 +1,20 @@
+plugins { id 'com.android.application' }
+
+def pureServerUrl = (project.findProperty('PURE_SERVER_URL') ?: System.getenv('PURE_SERVER_URL') ?: '').toString().trim()
+def escapedServerUrl = pureServerUrl.replace('\\', '\\\\').replace('"', '\\"')
+
+android {
+    namespace 'app.pure.chat'
+    compileSdk 35
+    defaultConfig {
+        applicationId 'app.pure.chat'
+        minSdk 26
+        targetSdk 35
+        versionCode 14
+        versionName '0.8.0'
+        buildConfigField 'String', 'PURE_SERVER_URL', '"' + escapedServerUrl + '"'
+    }
+    buildFeatures { buildConfig true }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+    buildTypes { release { minifyEnabled false } }
+}

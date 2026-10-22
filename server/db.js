@@ -1,0 +1,56 @@
+import { DatabaseSync } from 'node:sqlite';
+import { mkdirSync } from 'node:fs';
+import { join } from 'node:path';
+
+export function openDatabase(dir) {
+  mkdirSync(join(dir, 'uploads'), {recursive:true});
+  const db = new DatabaseSync(join(dir, 'pure.db'));
+  db.exec(`PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;
+    CREATE TABLE IF NOT EXISTS users(id TEXT PRIMARY KEY, handle TEXT UNIQUE NOT NULL, name TEXT NOT NULL, password TEXT NOT NULL, created INTEGER NOT NULL, role TEXT NOT NULL DEFAULT 'user');
+    CREATE TABLE IF NOT EXISTS sessions(token TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),expires INTEGER NOT NULL);
+    CREATE TABLE IF NOT EXISTS friends(a TEXT NOT NULL,b TEXT NOT NULL,status TEXT NOT NULL,requester TEXT NOT NULL, PRIMARY KEY(a,b));
+    CREATE TABLE IF NOT EXISTS blocks(owner TEXT NOT NULL,target TEXT NOT NULL,PRIMARY KEY(owner,target));
+    CREATE TABLE IF NOT EXISTS files(id TEXT PRIMARY KEY,owner TEXT NOT NULL,peer TEXT NOT NULL,name TEXT NOT NULL,mime TEXT NOT NULL,size INTEGER NOT NULL,path TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS messages(id INTEGER PRIMARY KEY AUTOINCREMENT,sender TEXT NOT NULL,receiver TEXT NOT NULL,text TEXT NOT NULL DEFAULT '',file_id TEXT REFERENCES files(id),created INTEGER NOT NULL,seen INTEGER,client_id TEXT,UNIQUE(sender,client_id));
+    CREATE INDEX IF NOT EXISTS messages_pair ON messages(sender,receiver,id);
+    CREATE TABLE IF NOT EXISTS pets(owner TEXT PRIMARY KEY,name TEXT NOT NULL DEFAULT 'Mochi',kind TEXT NOT NULL DEFAULT 'cat',food REAL NOT NULL DEFAULT 80,joy REAL NOT NULL DEFAULT 80,clean REAL NOT NULL DEFAULT 80,energy REAL NOT NULL DEFAULT 80,coins INTEGER NOT NULL DEFAULT 100,xp INTEGER NOT NULL DEFAULT 0,updated INTEGER NOT NULL,last_action INTEGER NOT NULL DEFAULT 0,decor INTEGER NOT NULL DEFAULT 0);
+  `);
+  // Additive migration preserves existing accounts, coins and pet state.
+  const userColumns=db.prepare('PRAGMA table_info(users)').all().map(c=>c.name);
+  if(!userColumns.includes('role'))db.exec("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'user'");
+  if(!userColumns.includes('bio'))db.exec("ALTER TABLE users ADD COLUMN bio TEXT NOT NULL DEFAULT ''");
+  if(!userColumns.includes('profile_private'))db.exec("ALTER TABLE users ADD COLUMN profile_private INTEGER NOT NULL DEFAULT 0");
+  if(!userColumns.includes('timeline_private'))db.exec("ALTER TABLE users ADD COLUMN timeline_private INTEGER NOT NULL DEFAULT 0");
+  const messageColumns=db.prepare('PRAGMA table_info(messages)').all().map(c=>c.name);
+  if(!messageColumns.includes('deleted'))db.exec('ALTER TABLE messages ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0');
+  db.exec(`DROP TABLE IF EXISTS pet_battles; DROP TABLE IF EXISTS adventures;
+    CREATE TABLE IF NOT EXISTS posts(id INTEGER PRIMARY KEY AUTOINCREMENT,owner TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,text TEXT NOT NULL,kind TEXT NOT NULL,path TEXT,mime TEXT,size INTEGER NOT NULL DEFAULT 0,created INTEGER NOT NULL,client_id TEXT NOT NULL,UNIQUE(owner,client_id));
+    CREATE INDEX IF NOT EXISTS posts_owner ON posts(owner,id);
+    CREATE TABLE IF NOT EXISTS post_likes(post_id INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,owner TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,PRIMARY KEY(post_id,owner));
+    CREATE TABLE IF NOT EXISTS post_comments(id INTEGER PRIMARY KEY AUTOINCREMENT,post_id INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,owner TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,text TEXT NOT NULL,created INTEGER NOT NULL,client_id TEXT NOT NULL,UNIQUE(post_id,owner,client_id));
+    CREATE INDEX IF NOT EXISTS post_comments_post ON post_comments(post_id,id);
+    CREATE TABLE IF NOT EXISTS post_reactions(post_id INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,owner TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,reaction TEXT NOT NULL,PRIMARY KEY(post_id,owner));
+    CREATE TABLE IF NOT EXISTS comment_reactions(comment_id INTEGER NOT NULL REFERENCES post_comments(id) ON DELETE CASCADE,owner TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,reaction TEXT NOT NULL,PRIMARY KEY(comment_id,owner));`);
+  const commentColumns=db.prepare('PRAGMA table_info(post_comments)').all().map(c=>c.name);
+  if(!commentColumns.includes('parent_id'))db.exec('ALTER TABLE post_comments ADD COLUMN parent_id INTEGER REFERENCES post_comments(id) ON DELETE CASCADE');
+  db.exec(`CREATE TABLE IF NOT EXISTS follows(follower TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,followed TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,created INTEGER NOT NULL,PRIMARY KEY(follower,followed),CHECK(follower<>followed));
+    CREATE INDEX IF NOT EXISTS follows_followed ON follows(followed,created);`);
+  const petColumns=db.prepare('PRAGMA table_info(pets)').all().map(c=>c.name);
+  if(!petColumns.includes('skin'))db.exec("ALTER TABLE pets ADD COLUMN skin TEXT NOT NULL DEFAULT 'snow'");
+  if(!petColumns.includes('personality'))db.exec("ALTER TABLE pets ADD COLUMN personality TEXT NOT NULL DEFAULT 'playful'");
+  db.exec(`CREATE TABLE IF NOT EXISTS pet_skins(owner TEXT NOT NULL REFERENCES users(id),skin TEXT NOT NULL,PRIMARY KEY(owner,skin));
+    CREATE TABLE IF NOT EXISTS pet_chats(id INTEGER PRIMARY KEY AUTOINCREMENT,owner TEXT NOT NULL REFERENCES users(id),role TEXT NOT NULL,text TEXT NOT NULL,created INTEGER NOT NULL);
+    CREATE INDEX IF NOT EXISTS pet_chats_owner ON pet_chats(owner,id);`);
+  db.exec(`CREATE TABLE IF NOT EXISTS nearby_locations(owner TEXT PRIMARY KEY REFERENCES users(id),lat REAL NOT NULL,lon REAL NOT NULL,expires INTEGER NOT NULL);
+    CREATE TABLE IF NOT EXISTS assistant_chats(id INTEGER PRIMARY KEY AUTOINCREMENT,owner TEXT NOT NULL REFERENCES users(id),role TEXT NOT NULL,text TEXT NOT NULL,created INTEGER NOT NULL);
+    CREATE TABLE IF NOT EXISTS groups(id TEXT PRIMARY KEY,name TEXT NOT NULL,created_by TEXT NOT NULL,created INTEGER NOT NULL);
+    CREATE TABLE IF NOT EXISTS group_members(group_id TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,user_id TEXT NOT NULL REFERENCES users(id),role TEXT NOT NULL DEFAULT 'member',joined INTEGER NOT NULL,PRIMARY KEY(group_id,user_id));
+    CREATE TABLE IF NOT EXISTS group_invites(group_id TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,invited_by TEXT NOT NULL REFERENCES users(id),created INTEGER NOT NULL,PRIMARY KEY(group_id,user_id));
+    CREATE TABLE IF NOT EXISTS group_messages(id INTEGER PRIMARY KEY AUTOINCREMENT,group_id TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,sender TEXT NOT NULL,text TEXT NOT NULL DEFAULT '',file_id TEXT,created INTEGER NOT NULL,client_id TEXT,UNIQUE(group_id,sender,client_id));
+    CREATE INDEX IF NOT EXISTS group_messages_group ON group_messages(group_id,id);
+    INSERT OR IGNORE INTO users(id,handle,name,password,created,role) VALUES('pure-ai','pure','PURE AI','bot',0,'bot');
+  `);
+  const groupMessageColumns=db.prepare('PRAGMA table_info(group_messages)').all().map(c=>c.name);
+  if(!groupMessageColumns.includes('deleted'))db.exec('ALTER TABLE group_messages ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0');
+  return db;
+}

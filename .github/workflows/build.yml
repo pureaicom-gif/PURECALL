@@ -1,0 +1,47 @@
+name: PURE checks and Android APK
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: docker build -t pure-server:${{ github.sha }} .
+
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Build debug APK
+        working-directory: android
+        env:
+          PURE_SERVER_URL: ${{ vars.PURE_SERVER_URL }}
+        run: |
+          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleDebug -PPURE_SERVER_URL="$PURE_SERVER_URL"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PURE-0.8.0-debug
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 30
