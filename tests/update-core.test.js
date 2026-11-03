@@ -57,3 +57,15 @@ test('server exposes app-config and local version.json', async () => {
     assert.equal(parseManifest(await (await fetch(base + '/version.json')).json()).versionCode, 16);
   } finally { s.io?.close(); await new Promise(r => s.http.close(r)); s.db?.close?.(); }
 });
+
+test('local AI router: command parsing allow-list + offline guide', async () => {
+  const { parseCommand, offlineGuide, runTask } = await import('../public/local-ai.js');
+  assert.deepEqual(parseCommand('ok {"action":"call","name":"Bob","video":true}'), { action: 'call', name: 'Bob', video: true });
+  assert.deepEqual(parseCommand('{"action":"rm -rf","x":1}'), { action: 'none' });
+  assert.deepEqual(parseCommand('no json'), { action: 'none' });
+  assert.match(offlineGuide('โทรกลุ่มยังไง'), /6 คน/);
+  const viaServer = await runTask('smart_replies', 'ไปกินข้าวกัน', { api: async () => ({ text: '1. ได้เลย\n2. กี่โมง\n- ไม่ว่าง' }) });
+  assert.deepEqual(viaServer, { replies: ['ได้เลย', 'กี่โมง', 'ไม่ว่าง'], via: 'server' });
+  const offline = await runTask('command', 'โทรหา Bob', { api: async () => { throw new Error('offline'); } });
+  assert.deepEqual(offline, { command: { action: 'none' }, via: 'guide' });
+});

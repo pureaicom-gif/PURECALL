@@ -42,3 +42,6 @@ article.e2e .message-original::before{content:'🔒 ';font-size:11px;opacity:.6}
 .join-pill{background:rgba(34,197,94,.14);color:#86efac;border:1px solid rgba(34,197,94,.45);padding:6px 12px;border-radius:999px;font-size:12px;animation:recpulse 1.8s infinite}
 .push-enable{margin:8px 16px;padding:10px 12px;border-radius:12px;background:rgba(124,92,255,.1);border:1px solid rgba(124,92,255,.35);color:#c4b5fd;font-size:12px;text-align:left}
 @media(prefers-reduced-motion:reduce){.sv-bars .now,.rec-banner,.join-pill{animation:none}}
+.smart-replies{display:flex;flex-wrap:wrap;gap:6px;padding:6px 12px;font-size:13px;color:var(--muted)}
+.smart-replies .smart-translation{flex-basis:100%;margin:0;color:#d1fae5}
+.aic-local progress{width:100%;accent-color:#00E676}
