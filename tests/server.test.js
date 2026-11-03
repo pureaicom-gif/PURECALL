@@ -7,23 +7,17 @@ import { io } from 'socket.io-client';
 import { createPureServer } from '../server/index.js';
 import { createGemini } from '../server/gemini.js';
 
-test('public APK download serves the current Android installer',async t=>{
+test('public APK download serves the local installer or redirects to the GitHub release',async t=>{
  const dir=mkdtempSync(join(tmpdir(),'pure-apk-test-')),server=createPureServer({dataDir:dir,scan:false});
  await new Promise(r=>server.http.listen(0,'127.0.0.1',r));
  t.after(async()=>{await server.close();rmSync(dir,{recursive:true,force:true});});
- const response=await fetch('http://127.0.0.1:'+server.http.address().port+'/download/pure.apk');
- assert.equal(response.status,200);
- assert.match(response.headers.get('content-type'),/application\/vnd\.android\.package-archive/);
- assert.match(response.headers.get('content-disposition'),/attachment; filename="PURE-0\.8\.0\.apk"/);
- const apk=Buffer.from(await response.arrayBuffer());
- assert.ok(apk.length>100_000);
- assert.equal(apk.readUInt32LE(0),0x04034b50,'APK is a ZIP archive');
- const page=await fetch('http://127.0.0.1:'+server.http.address().port+'/');
- assert.match(await page.text(),/href="\/downloads\/PURE-0\.8\.0-debug\.apk" download="PURE-0\.8\.0\.apk"/);
- const direct=await fetch('http://127.0.0.1:'+server.http.address().port+'/downloads/PURE-0.8.0-debug.apk');
- assert.equal(direct.status,200);
- assert.match(direct.headers.get('content-type'),/application\/(vnd\.android\.package-archive|octet-stream)/);
- assert.equal(Number(direct.headers.get('content-length')),apk.length);
+ const base='http://127.0.0.1:'+server.http.address().port;
+ const response=await fetch(base+'/download/pure.apk',{redirect:'manual'});
+ if(response.status===302)assert.match(response.headers.get('location'),/^https:\/\/github\.com\/purefxaidev\/purecall-web\/releases\/download\/v[\d.]+\/PURE-[\d.]+-release\.apk$/);
+ else{assert.equal(response.status,200);assert.match(response.headers.get('content-type'),/application\/vnd\.android\.package-archive/);
+  assert.match(response.headers.get('content-disposition'),/attachment; filename="PURE-\d+\.\d+\.\d+(-release)?\.apk"/);
+  const apk=Buffer.from(await response.arrayBuffer());assert.ok(apk.length>100_000);assert.equal(apk.readUInt32LE(0),0x04034b50,'APK is a ZIP archive');}
+ assert.match(await (await fetch(base+'/')).text(),/href="\/download\/pure\.apk" download="PURE-0\.9\.0\.apk"/);
 });
 
 test('accounts, friendship, realtime, private files, calls, pet and session lifecycle',async t=>{
