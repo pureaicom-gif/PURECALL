@@ -260,13 +260,11 @@ public class MainActivity extends Activity {
         }
         Updater.ensureChannel(this);
         try { UpdateWorker.schedule(this); } catch (Exception ignored) {}
-        showSetup();
+        String savedManual = getPreferences(0).getString("server", "");
+        if (manualServer() && !savedManual.isEmpty()) { showSetup(); openServer(savedManual); }
+        else showWaiting();
         handleNotificationIntent(getIntent());
-        new Thread(() -> {
-            String found = ServerDiscovery.refresh(this);
-            runOnUiThread(() -> autoConnectDiscovered(found));
-            checkForUpdate(getIntent() != null && getIntent().getBooleanExtra("showUpdate", false));
-        }).start();
+        new Thread(() -> checkForUpdate(getIntent() != null && getIntent().getBooleanExtra("showUpdate", false))).start();
     }
 
     // ---- v0.9: server discovery ----
@@ -289,7 +287,8 @@ public class MainActivity extends Activity {
                     getPreferences(0).edit().putString("server", found).apply();
                     Toast.makeText(this, "เซิร์ฟเวอร์ย้ายที่อยู่ — กำลังเชื่อมต่อใหม่", Toast.LENGTH_SHORT).show();
                     openServer(found);
-                } else showErrorScreen(failedOrigin, err);
+                } else if (!manualServer()) showWaiting();
+                else showErrorScreen(failedOrigin, err);
             });
         }).start();
     }
@@ -368,7 +367,68 @@ public class MainActivity extends Activity {
         setContentView(root);
     }
 
+    // ---- 0.9.1: auto-connect. Poll server.json with backoff; manual setup only behind a small link. ----
+    private final android.os.Handler retryHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+    private int retryAttempt = 0;
+    private boolean waiting = false;
+    private TextView waitStatus;
+
+    private void showWaiting() {
+        if (tts != null) tts.stop();
+        showingSetup = true; waiting = true; isScanning = false; scannerFromChat = false;
+        if (scannerWeb != null) { scannerWeb.destroy(); scannerWeb = null; }
+        if (web != null) { web.destroy(); web = null; }
+        base();
+        LinearLayout c = new LinearLayout(this);
+        c.setOrientation(LinearLayout.VERTICAL);
+        c.setGravity(android.view.Gravity.CENTER);
+        c.setPadding(dp(28), dp(28), dp(28), dp(28));
+        root.addView(c, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        TextView logo = text("PURE", 44); logo.setTypeface(null, 1); logo.setTextColor(Color.rgb(0, 230, 118)); logo.setGravity(android.view.Gravity.CENTER);
+        c.addView(logo);
+        android.widget.ProgressBar pb = new android.widget.ProgressBar(this);
+        pb.setIndeterminateTintList(android.content.res.ColorStateList.valueOf(Color.rgb(0, 230, 118)));
+        c.addView(pb);
+        TextView t = text("กำลังรอเซิร์ฟเวอร์…", 18); t.setGravity(android.view.Gravity.CENTER); c.addView(t);
+        waitStatus = text("กำลังค้นหาเซิร์ฟเวอร์ PURE อัตโนมัติ", 12); waitStatus.setTextColor(Color.rgb(143, 191, 159)); waitStatus.setGravity(android.view.Gravity.CENTER); c.addView(waitStatus);
+        TextView manual = text("ตั้งค่าเอง", 13); manual.setTextColor(Color.rgb(120, 140, 128)); manual.setGravity(android.view.Gravity.CENTER);
+        manual.setPaintFlags(manual.getPaintFlags() | android.graphics.Paint.UNDERLINE_TEXT_FLAG); manual.setPadding(0, dp(28), 0, dp(6));
+        manual.setOnClickListener(v -> { stopWaiting(); showSetup(); });
+        c.addView(manual);
+        TextView ver = text("PURE " + BuildConfig.VERSION_NAME, 10); ver.setTextColor(Color.rgb(70, 90, 78)); ver.setGravity(android.view.Gravity.CENTER); c.addView(ver);
+        retryAttempt = 0;
+        retryHandler.removeCallbacksAndMessages(null);
+        tryDiscover();
+    }
+
+    private void stopWaiting() { waiting = false; retryHandler.removeCallbacksAndMessages(null); }
+
+    private void tryDiscover() {
+        if (!waiting) return;
+        new Thread(() -> {
+            String found = ServerDiscovery.refresh(this);
+            boolean alive = !found.isEmpty() && reachable(found);
+            runOnUiThread(() -> {
+                if (!waiting) return;
+                if (alive) { stopWaiting(); getPreferences(0).edit().putString("server", found).putBoolean("server_manual", false).apply(); openServer(found); return; }
+                long delay = Math.min(30000L, 2000L << Math.min(retryAttempt++, 4));
+                if (waitStatus != null) waitStatus.setText((found.isEmpty() ? "ยังไม่พบเซิร์ฟเวอร์" : "เซิร์ฟเวอร์ยังไม่ตอบ") + " · ลองใหม่ใน " + (delay / 1000) + " วิ (ครั้งที่ " + retryAttempt + ")");
+                retryHandler.postDelayed(this::tryDiscover, delay);
+            });
+        }).start();
+    }
+
+    private static boolean reachable(String origin) {
+        try {
+            java.net.HttpURLConnection h = (java.net.HttpURLConnection) new java.net.URL(origin + "/healthz").openConnection();
+            h.setConnectTimeout(6000); h.setReadTimeout(6000);
+            int code = h.getResponseCode(); h.disconnect();
+            return code >= 200 && code < 500;
+        } catch (Exception e) { return false; }
+    }
+
     private void showSetup() {
+        stopWaiting();
         if (tts != null) tts.stop();
         showingSetup = true;
         isScanning = false;
@@ -518,7 +578,7 @@ public class MainActivity extends Activity {
             startActivity(new Intent(this, OfflineActivity.class));
         }));
 
-        content.addView(text("PURE 0.6.0 • สแกน QR Code เข้าได้ทันที\nสายเรียกเข้าออนไลน์ต้องเปิดแอปไว้", 11));
+        content.addView(text("PURE " + BuildConfig.VERSION_NAME + " • สแกน QR Code เข้าได้ทันที\nสายเรียกเข้าออนไลน์ต้องเปิดแอปไว้", 11));
     }
 
     private void closeScannerView() {
@@ -533,7 +593,73 @@ public class MainActivity extends Activity {
         if (web != null) web.setVisibility(View.VISIBLE);
     }
 
+    private void handleScan(String data) {
+                    vibrateFeedback();
+                    if (data == null || data.trim().isEmpty()) return;
+                    String trimmed = data.trim();
+
+                    // 1. Friend QR check
+                    String friendHandle = null;
+                    if (trimmed.startsWith("pure:friend:")) {
+                        friendHandle = trimmed.substring(12).replace("@", "").trim();
+                    } else if (trimmed.contains("?add=") || trimmed.contains("&add=")) {
+                        try {
+                            Uri u = Uri.parse(trimmed);
+                            friendHandle = u.getQueryParameter("add");
+                            if (friendHandle != null) friendHandle = friendHandle.replace("@", "").trim();
+                        } catch (Exception ignored) {}
+                    }
+
+                    if (friendHandle != null && !friendHandle.isEmpty()) {
+                        if (scannerFromChat && web != null) {
+                            closeScannerView();
+                            Toast.makeText(this, "พบ QR เพื่อน @" + friendHandle, Toast.LENGTH_SHORT).show();
+                            web.evaluateJavascript("window.dispatchEvent(new CustomEvent('pure-add-friend',{detail:{handle:" + org.json.JSONObject.quote(friendHandle) + "}}));", null);
+                            return;
+                        } else {
+                            String cleanServer = normalizeUrl(trimmed);
+                            if (cleanServer != null) {
+                                Toast.makeText(this, "กำลังเชื่อมต่อเพื่อเพิ่มเพื่อน...", Toast.LENGTH_SHORT).show();
+                                getPreferences(0).edit().putString("server", cleanServer).apply();
+                                openServer(cleanServer + "/?add=" + friendHandle);
+                                return;
+                            }
+                        }
+                    }
+
+                    // 2. Server URL check
+                    String clean = normalizeUrl(trimmed);
+                    if (clean != null) {
+                        Toast.makeText(this, "สแกนสำเร็จ! กำลังเชื่อมต่อ...", Toast.LENGTH_SHORT).show();
+                        getPreferences(0).edit().putString("server", clean).putBoolean("server_manual", !clean.equals(ServerDiscovery.cached(this))).apply();
+                        openServer(clean);
+                    } else {
+                        new AlertDialog.Builder(this)
+                            .setTitle("ข้อมูล QR Code ไม่ถูกต้อง")
+                            .setMessage("QR Code ที่สแกนได้ไม่ใช่ที่อยู่เซิร์ฟเวอร์ PURE หรือ QR เพื่อน:\n\n" + data)
+                            .setPositiveButton("ลองใหม่", (d, w) -> openScanner())
+                            .setNegativeButton("กลับ", (d, w) -> {
+                                if (scannerFromChat && web != null) closeScannerView();
+                                else showSetup();
+                            })
+                            .show();
+                    }
+    }
+
+    /** Native Google code scanner (Play services; no camera permission, works on all ROMs). Falls back to the in-app WebView scanner. */
     private void openScanner() {
+        stopWaiting();
+        try {
+            com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions opts = new com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions.Builder()
+                    .setBarcodeFormats(com.google.mlkit.vision.barcode.common.Barcode.FORMAT_QR_CODE).enableAutoZoom().build();
+            com.google.mlkit.vision.codescanner.GmsBarcodeScanning.getClient(this, opts).startScan()
+                    .addOnSuccessListener(b -> { scannerFromChat = web != null && !showingSetup; handleScan(b.getRawValue()); })
+                    .addOnCanceledListener(() -> {})
+                    .addOnFailureListener(e -> openWebScanner());
+        } catch (Throwable t) { openWebScanner(); }
+    }
+
+    private void openWebScanner() {
         if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(new String[]{Manifest.permission.CAMERA}, 20);
             return;
@@ -590,58 +716,7 @@ public class MainActivity extends Activity {
         scannerWeb.addJavascriptInterface(new Object() {
             @JavascriptInterface
             public void onScanned(String data) {
-                runOnUiThread(() -> {
-                    vibrateFeedback();
-                    if (data == null || data.trim().isEmpty()) return;
-                    String trimmed = data.trim();
-
-                    // 1. Friend QR check
-                    String friendHandle = null;
-                    if (trimmed.startsWith("pure:friend:")) {
-                        friendHandle = trimmed.substring(12).replace("@", "").trim();
-                    } else if (trimmed.contains("?add=") || trimmed.contains("&add=")) {
-                        try {
-                            Uri u = Uri.parse(trimmed);
-                            friendHandle = u.getQueryParameter("add");
-                            if (friendHandle != null) friendHandle = friendHandle.replace("@", "").trim();
-                        } catch (Exception ignored) {}
-                    }
-
-                    if (friendHandle != null && !friendHandle.isEmpty()) {
-                        if (scannerFromChat && web != null) {
-                            closeScannerView();
-                            Toast.makeText(MainActivity.this, "พบ QR เพื่อน @" + friendHandle, Toast.LENGTH_SHORT).show();
-                            web.evaluateJavascript("window.dispatchEvent(new CustomEvent('pure-add-friend',{detail:{handle:" + org.json.JSONObject.quote(friendHandle) + "}}));", null);
-                            return;
-                        } else {
-                            String cleanServer = normalizeUrl(trimmed);
-                            if (cleanServer != null) {
-                                Toast.makeText(MainActivity.this, "กำลังเชื่อมต่อเพื่อเพิ่มเพื่อน...", Toast.LENGTH_SHORT).show();
-                                getPreferences(0).edit().putString("server", cleanServer).apply();
-                                openServer(cleanServer + "/?add=" + friendHandle);
-                                return;
-                            }
-                        }
-                    }
-
-                    // 2. Server URL check
-                    String clean = normalizeUrl(trimmed);
-                    if (clean != null) {
-                        Toast.makeText(MainActivity.this, "สแกนสำเร็จ! กำลังเชื่อมต่อ...", Toast.LENGTH_SHORT).show();
-                        getPreferences(0).edit().putString("server", clean).apply();
-                        openServer(clean);
-                    } else {
-                        new AlertDialog.Builder(MainActivity.this)
-                            .setTitle("ข้อมูล QR Code ไม่ถูกต้อง")
-                            .setMessage("QR Code ที่สแกนได้ไม่ใช่ที่อยู่เซิร์ฟเวอร์ PURE หรือ QR เพื่อน:\n\n" + data)
-                            .setPositiveButton("ลองใหม่", (d, w) -> openScanner())
-                            .setNegativeButton("กลับ", (d, w) -> {
-                                if (scannerFromChat && web != null) closeScannerView();
-                                else showSetup();
-                            })
-                            .show();
-                    }
-                });
+                runOnUiThread(() -> handleScan(data));
             }
 
             @JavascriptInterface
@@ -732,6 +807,7 @@ public class MainActivity extends Activity {
     }
 
     private void openServer(String url) {
+        stopWaiting();
         showingSetup = false;
         isScanning = false;
         serverOrigin = url;
@@ -1015,7 +1091,7 @@ public class MainActivity extends Activity {
         }
         if (code == 20) {
             if (checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
-                openScanner();
+                openWebScanner();
             } else {
                 Toast.makeText(this, "จำเป็นต้องอนุญาตการใช้กล้องเพื่อสแกน QR Code", Toast.LENGTH_LONG).show();
             }

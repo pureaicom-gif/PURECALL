@@ -1,14 +1,15 @@
+import { mountComfy, stopComfy } from './admin-comfy.js';
 // In-app Admin (Android WebView + web). Visible only to admins; every endpoint re-checks role server-side (adminOnly).
 const fmtB = n => n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.round(n / 1024) + ' KB';
 const fmtT = s => { s = Math.round(s || 0); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60); return h ? `${h} ชม. ${m} นาที` : `${m} นาที`; };
 let audioUrl = null;
 const freeAudio = () => { if (audioUrl) { URL.revokeObjectURL(audioUrl); audioUrl = null; } };
-export function stopAdmin() { const p = document.querySelector('#page'); if (p) p.onclick = null; freeAudio(); }
+export function stopAdmin() { stopComfy(); const p = document.querySelector('#page'); if (p) p.onclick = null; freeAudio(); }
 export async function mountAdmin({ api, esc, state, toast }) {
   const page = document.querySelector('#page');
   if (state.user?.role !== 'admin') { page.innerHTML = '<div class="card">สำหรับผู้ดูแลระบบเท่านั้น</div>'; return; }
   page.innerHTML = `<div class="adm"><header class="page-header"><div><p class="eyebrow">PURE ADMIN · ADMIN ONLY</p><h1>แผงผู้ดูแล<span class="tiny-dot">.</span></h1></div></header>
-  <nav class="adm-tabs" role="tablist">${[['voice', 'Voice Studio'], ['users', 'ผู้ใช้'], ['server', 'เซิร์ฟเวอร์'], ['release', 'รีลีส'], ['content', 'โฆษณา/สัตว์เลี้ยง']].map(([k, l], i) => `<button data-adm="${k}" class="${i ? '' : 'on'}">${l}</button>`).join('')}</nav>
+  <nav class="adm-tabs" role="tablist">${[['voice', 'Voice Studio'], ['comfy', 'รูป/วิดีโอ'], ['users', 'ผู้ใช้'], ['server', 'เซิร์ฟเวอร์'], ['release', 'รีลีส'], ['content', 'โฆษณา/สัตว์เลี้ยง']].map(([k, l], i) => `<button data-adm="${k}" class="${i ? '' : 'on'}">${l}</button>`).join('')}</nav>
   <section id="adm-voice" class="adm-sec"><div class="adm-card"><h3>Voice Studio · Drama3</h3>
     <label>ข้อความ<textarea id="adm-text" maxlength="300" rows="4" placeholder="พิมพ์ข้อความที่ต้องการให้เสียงพูด">สวัสดีค่ะ ดิฉันคือเลขา PURE ยินดีช่วยเหลือค่ะ</textarea></label>
     <div class="adm-row"><label>เสียง<select id="adm-voice-sel"><option>pure-secretary.wav</option></select></label>
@@ -16,6 +17,7 @@ export async function mountAdmin({ api, esc, state, toast }) {
     <button id="adm-gen" class="adm-btn">สร้างเสียง</button><p id="adm-gen-note" class="adm-note">Drama3 ใช้ GPU ~7× ช้ากว่าเวลาจริง · ประโยคสั้นใช้ ~10–40 วินาที</p>
     <div id="adm-player" hidden><audio id="adm-audio" controls></audio><div class="adm-row"><a id="adm-dl" class="adm-btn ghost" download>ดาวน์โหลด WAV</a><button id="adm-share" class="adm-btn ghost">แชร์</button></div></div></div>
     <div class="adm-card"><h3>ประวัติ</h3><div id="adm-hist" class="adm-list"><small>กำลังโหลด…</small></div></div></section>
+  <section id="adm-comfy" class="adm-sec" hidden><div id="adm-comfy-body"><small>กำลังโหลด…</small></div></section>
   <section id="adm-users" class="adm-sec" hidden><div class="adm-card"><h3>ผู้ใช้ล่าสุด</h3><div id="adm-user-list" class="adm-list"><small>กำลังโหลด…</small></div></div></section>
   <section id="adm-server" class="adm-sec" hidden><div id="adm-server-body" class="adm-grid"><small>กำลังโหลด…</small></div></section>
   <section id="adm-release" class="adm-sec" hidden><div id="adm-release-body" class="adm-card"><small>กำลังโหลด…</small></div></section>
@@ -52,6 +54,7 @@ export async function mountAdmin({ api, esc, state, toast }) {
       const r = sys.release || live || {};
       $('#adm-release-body').innerHTML = `<h3>อัปเดตแอป</h3><p>เวอร์ชันเซิร์ฟเวอร์ <b>${esc(sys.version)}</b></p><p>ประกาศอัปเดต: <b>${esc(r.versionName || '-')}</b> (versionCode ${esc(String(r.versionCode ?? '-'))})</p>${r.apkUrl ? `<p class="adm-break"><a href="${esc(r.apkUrl)}" target="_blank" rel="noopener">${esc(r.apkUrl)}</a></p>` : ''}${r.sha256 ? `<small class="adm-break">sha256 ${esc(r.sha256)}</small>` : ''}<p>${live && r.versionCode === live.versionCode ? '🟢 /version.json ตรงกับที่เผยแพร่' : '🟡 ตรวจ /version.json'}</p>`;
     },
+    async comfy() { await mountComfy($('#adm-comfy-body'), { api, esc, toast }); },
     async content() {
       await Promise.all([loadSys(), ov || loadOv()]);
       $('#adm-content-body').innerHTML = `<div class="adm-card"><h3>สัตว์เลี้ยง</h3><p>สัตว์เลี้ยงทั้งหมด <b>${ov.stats.pets}</b> · วิดีโอห้องสัตว์เลี้ยง ${sys.pets.videos.length} ไฟล์</p><div class="adm-chips">${sys.pets.videos.map(v => `<span>${esc(v)}</span>`).join('')}</div></div>

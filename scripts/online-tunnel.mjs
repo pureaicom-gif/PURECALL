@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import QRCode from 'qrcode';
 import { serverJson, writeLocal, publishToPages, manualInstructions } from './lib/publish.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -19,7 +20,7 @@ if (!existsSync(dataDir)) mkdirSync(dataDir, { recursive: true });
 if (!existsSync(distDir)) mkdirSync(distDir, { recursive: true });
 
 console.log('================================================================');
-console.log('           PURE 0.5 - ONLINE SERVER (CLOUDFLARE TUNNEL)         ');
+console.log('           PURE 0.9 - ONLINE SERVER (CLOUDFLARE TUNNEL)         ');
 console.log('================================================================\n');
 
 async function isServerRunning() {
@@ -66,7 +67,10 @@ async function ensureServer() {
 
 let tunnelUrl = null;
 
-function onTunnelReady(url) {
+async function onTunnelReady(url) {
+  // QR generated locally (works offline; no third-party QR service)
+  let qrData = '', qrText = '';
+  try { qrData = await QRCode.toDataURL(url, { margin: 1, width: 260, color: { dark: '#000000', light: '#ffffff' } }); qrText = await QRCode.toString(url, { type: 'terminal', small: true }); } catch (e) { console.log('[WARN] สร้าง QR ไม่ได้: ' + e.message); }
   tunnelUrl = url;
 
   // 1. Write to data/tunnel-url.txt
@@ -81,7 +85,7 @@ function onTunnelReady(url) {
   // 2. Write to SERVER-URL.txt in root and dist
   const summaryText = [
     '================================================================',
-    '       PURE 0.5 - ลิงก์เชื่อมต่อผ่านอินเทอร์เน็ต (ONLINE URL)',
+    '       PURE 0.9 - ลิงก์เชื่อมต่อผ่านอินเทอร์เน็ต (ONLINE URL)',
     '================================================================',
     '',
     '📱 ลิงก์สำหรับเข้าใช้งานบนมือถือ (ใช้ได้ทั้งเน็ต 4G/5G และ Wi-Fi):',
@@ -125,7 +129,7 @@ function onTunnelReady(url) {
     <p style="color:#8e98a8;">สแกน QR Code หรือคัดลอกลิงก์นี้ไปใส่ในแอป PURE บนมือถือ</p>
     
     <div class="qr">
-      <img src="https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(url)}" alt="QR Code" width="220" height="220">
+      <img src="${qrData}" alt="QR Code" width="260" height="260">
     </div>
 
     <div class="url-box" id="url-text">${url}</div>
@@ -156,13 +160,13 @@ function onTunnelReady(url) {
   // Print clean banner in console
   console.clear();
   console.log('\n================================================================');
-  console.log('       🚀 PURE 0.5 - เชื่อมต่อผ่านอินเทอร์เน็ตสำเร็จ!             ');
+  console.log('       🚀 PURE 0.9 - เชื่อมต่อผ่านอินเทอร์เน็ตสำเร็จ!             ');
   console.log('================================================================\n');
   console.log('📱 ลิงก์สำหรับเข้าใช้งานบนมือถือ (ใช้ได้ทั้ง 4G/5G และ Wi-Fi):');
   console.log(`   👉 ${url} 👈\n`);
+  if (qrText) console.log('📷 สแกน QR นี้ด้วยแอป PURE (ปุ่ม สแกน QR Code):\n' + qrText);
   console.log('👑 แอดมินคอนโซล (Admin Console):');
   console.log(`   👉 ${url}/admin`);
-  console.log('   PURE ID : purefxai');
   console.log('   Password: use your configured admin password\n');
   console.log('================================================================');
   console.log('💡 เคล็ดลับ:');

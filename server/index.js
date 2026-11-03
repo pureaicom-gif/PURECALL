@@ -34,6 +34,7 @@ import { installNearby } from './nearby.js';
 import { installAssistant } from './assistant.js';
 import { createJevRunner } from './jev-run.js';
 import { classifyTask } from './jev.js';
+import { createComfy, installComfy } from './comfy.js';
 
 const scrypt=promisify(scryptCb), root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const hash=t=>createHash('sha256').update(t).digest('hex');
@@ -577,6 +578,8 @@ export function createPureServer(options={}) {
   });
   const tts=options.tts||createTts({dataDir,fetcher:options.ttsFetch});
   installTts(app,{tts,auth,adminOnly,limiter:rateLimit({windowMs:60_000,limit:120,standardHeaders:'draft-7',legacyHeaders:false}),studioLimiter:rateLimit({windowMs:60_000,limit:Number(process.env.STUDIO_RATE||20),standardHeaders:'draft-7',legacyHeaders:false,message:{error:'studio rate limited'}})});
+  const comfy=options.comfy||createComfy({dataDir,fetcher:options.comfyFetch});
+  installComfy(app,{comfy,auth,adminOnly,limiter:rateLimit({windowMs:60_000,limit:Number(process.env.COMFY_RATE||10),standardHeaders:'draft-7',legacyHeaders:false,keyGenerator:req=>req.user.id,message:{error:'comfy rate limited'}})});
   if(typeof options.extendApp==='function')options.extendApp(app,{db,dataDir});
   // v0.9 in-app update + server discovery
   app.get('/api/app-config',(_,res)=>res.json({updateManifestUrl:process.env.UPDATE_MANIFEST_URL||'https://call.purefxai.store/version.json',githubReleaseApi:process.env.UPDATE_GITHUB_RELEASE_API||'https://api.github.com/repos/purefxaidev/purecall-web/releases/latest',serverJsonUrl:process.env.SERVER_JSON_URL||'https://call.purefxai.store/server.json',checkIntervalHours:6}));
@@ -585,11 +588,18 @@ export function createPureServer(options={}) {
   app.use('/api',(req,res)=>res.status(404).json({error:'ไม่พบ API'}));
   app.use(express.static(join(root,'public')));
   app.use((err,req,res,next)=>{if(res.headersSent)return next(err);if(!err.status&&err.code!=='LIMIT_FILE_SIZE')log.error('unhandled',{path:req.path,error:err.message,stack:process.env.NODE_ENV==='production'?undefined:err.stack});if(err.type==='entity.parse.failed')return res.status(400).json({error:'JSON ไม่ถูกต้อง'});if(err.type==='entity.too.large')return res.status(413).json({error:'ข้อมูลใหญ่เกินไป'});res.status(err.status|| (err.code==='LIMIT_FILE_SIZE'?413:500)).json({error:err.code==='LIMIT_FILE_SIZE'?'ไฟล์ใหญ่เกิน 25 MB':err.status?err.message:'เกิดข้อผิดพลาด กรุณาลองอีกครั้ง'});});
+  const adminEnv=options.admin===undefined?{handle:process.env.ADMIN_HANDLE,password:process.env.ADMIN_PASSWORD}:options.admin;
+  const adminReady=(async()=>{const h=String(adminEnv?.handle||'').toLowerCase(),pw=adminEnv?.password;if(!h&&!pw)return;if(!/^[a-z0-9_]{3,24}$/.test(h)||typeof pw!=='string'||pw.length<8){log.warn('admin bootstrap skipped: ADMIN_HANDLE/ADMIN_PASSWORD invalid (password >= 8 chars)');return;}
+    const salt=randomBytes(16).toString('hex'),pass=salt+':'+(await scrypt(pw,salt,64)).toString('hex'),u=one('SELECT id,password FROM users WHERE handle=?',h);
+    if(u){const [s0,k0]=u.password.split(':');const same=k0&&timingSafeEqual(Buffer.from(k0,'hex'),await scrypt(pw,s0,64));run("UPDATE users SET role='admin',password=? WHERE id=?",same?u.password:pass,u.id);if(!same)run('DELETE FROM sessions WHERE user_id=?',u.id);}
+    else{const id=randomUUID();run("INSERT INTO users(id,handle,name,password,created,role) VALUES(?,?,?,?,?,'admin')",id,h,h.toUpperCase(),pass,Date.now());run('INSERT INTO pets(owner,updated) VALUES(?,?)',id,Date.now());}
+    log.info('admin account ready from .env',{handle:h});})().catch(e=>log.error('admin bootstrap failed',{error:e.message}));
   let scanTimer;if(options.scan!==false){gemini.scan();scanTimer=setInterval(()=>gemini.scan(),86400000);scanTimer.unref();}
   const cleanTimer=setInterval(()=>run('DELETE FROM sessions WHERE expires<?',Date.now()),3600000);cleanTimer.unref();
-  return {app,http,io,db,log,async close(){v09.close();stopStudio();stopSecretary();stopNearby();clearInterval(scanTimer);clearInterval(cleanTimer);for(const id of calls.keys())endCall(id,'shutdown');await new Promise(r=>io.close(r));db.close();}};
+  return {app,http,io,db,log,adminReady,async close(){v09.close();stopStudio();stopSecretary();stopNearby();clearInterval(scanTimer);clearInterval(cleanTimer);for(const id of calls.keys())endCall(id,'shutdown');await new Promise(r=>io.close(r));db.close();}};
 }
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
+  for(const f of [join(root,'.env'),join(root,'server','.env')])try{process.loadEnvFile(f);}catch{}
   const port=Number(process.env.PORT)||3000,host=process.env.HOST||'0.0.0.0';
   const server=createPureServer();
   server.http.on('error',async error=>{
