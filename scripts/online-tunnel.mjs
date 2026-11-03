@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { serverJson, writeLocal, publishToPages, manualInstructions } from './lib/publish.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const toolsDir = join(root, 'tools');
@@ -70,6 +71,12 @@ function onTunnelReady(url) {
 
   // 1. Write to data/tunnel-url.txt
   writeFileSync(join(dataDir, 'tunnel-url.txt'), url.trim(), 'utf8');
+  // 1b. server.json for app discovery (data/ + public/, and GitHub Pages when PURE_PAGES_TOKEN is set)
+  try {
+    const body = writeLocal(root, 'server.json', serverJson(url, { source: 'quick-tunnel' }));
+    publishToPages('server.json', body).then(r => console.log(r.published ? `[OK] เผยแพร่ server.json ไปที่ ${r.repo} แล้ว (แอปจะเจอเซิร์ฟเวอร์ใหม่เอง)` : '[INFO] ' + manualInstructions('server.json', root)))
+      .catch(e => console.log('[WARN] อัปโหลด server.json ไม่สำเร็จ: ' + e.message + '\n' + manualInstructions('server.json', root)));
+  } catch (e) { console.log('[WARN] เขียน server.json ไม่ได้: ' + e.message); }
 
   // 2. Write to SERVER-URL.txt in root and dist
   const summaryText = [
