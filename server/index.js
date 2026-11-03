@@ -20,6 +20,9 @@ import { fileURLToPath } from 'node:url';
 import { unlinkSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { networkInterfaces } from 'node:os';
 import { openDatabase } from './db.js';
+import { migrate } from './v09/migrations.js';
+import { createLogger, requestLogger } from './v09/log.js';
+import { installV09, E2E_PREFIX, E2E_RE } from './v09/features.js';
 import { createGemini } from './gemini.js';
 import { installPetAI } from './pet-ai.js';
 import { PET_SPECIES } from '../public/pet-catalog.js';
@@ -34,6 +37,7 @@ const pair=(a,b)=>[a,b].sort();
 export function createPureServer(options={}) {
   const dataDir=resolve(options.dataDir||process.env.DATA_DIR||join(root,'data'));
   const db=openDatabase(dataDir), app=express(), http=createServer(app);
+  const log=options.log||createLogger({app:'pure'});migrate(db);
   const origin=options.origin??process.env.PUBLIC_ORIGIN;
   const originAllowed=req=>!req.headers.origin || req.headers.origin===(origin||`${req.headers['x-forwarded-proto']||(req.socket.encrypted?'https':'http')}://${req.headers.host}`) || req.headers.origin===`https://${req.headers.host}` || req.headers.origin===`http://${req.headers.host}`;
   const io=new Server(http,{maxHttpBufferSize:100000,allowRequest:(req,cb)=>cb(null,originAllowed(req))});
@@ -41,7 +45,10 @@ export function createPureServer(options={}) {
   const chatAi=createJevRunner({gemini,fetcher:options.studioFetch,hermes:options.hermes});
   const online=new Map(), calls=new Map();
   app.disable('x-powered-by');
-  app.use(helmet({contentSecurityPolicy:{directives:{defaultSrc:["'self'"],scriptSrc:["'self'"],styleSrc:["'self'"],imgSrc:["'self'",'blob:','data:'],mediaSrc:["'self'",'blob:'],connectSrc:["'self'"],upgradeInsecureRequests:null}},crossOriginEmbedderPolicy:false,strictTransportSecurity:!!origin}));
+  if(process.env.TRUST_PROXY)app.set('trust proxy',process.env.TRUST_PROXY==='true'?1:process.env.TRUST_PROXY);
+  app.use(requestLogger(log));
+  app.use(helmet({contentSecurityPolicy:{directives:{defaultSrc:["'self'"],scriptSrc:["'self'"],styleSrc:["'self'"],imgSrc:["'self'",'blob:','data:'],mediaSrc:["'self'",'blob:'],connectSrc:["'self'"],workerSrc:["'self'"],manifestSrc:["'self'"],objectSrc:["'none'"],frameAncestors:["'none'"],baseUri:["'self'"],formAction:["'self'"],upgradeInsecureRequests:null}},crossOriginEmbedderPolicy:false,strictTransportSecurity:!!origin}));
+  app.get('/healthz',(req,res)=>{try{db.prepare('SELECT 1').get();res.set('Cache-Control','no-store').json({ok:true,version:'0.9.0',uptime:Math.round(process.uptime()),sockets:io.engine.clientsCount});}catch(e){res.status(503).json({ok:false});}});
   app.use(express.json({limit:'64kb'}));
   app.get('/download/pure.apk',(req,res)=>{
     res.set('Cache-Control','public, max-age=3600');
@@ -71,7 +78,8 @@ export function createPureServer(options={}) {
   const stopSecretary=installSecretary(app,{io,db,auth,userOf,key:options.liveKey??process.env.GEMINI_API_KEY,model:options.liveModel??process.env.GEMINI_LIVE_MODEL,connect:options.liveConnect});
   const stopNearby=installNearby(app,{db,auth,blocked,pub});
   installAssistant(app,{db,auth,gemini,fetcher:options.studioFetch,hermes:options.hermes});
-  function session(res,id) {const token=randomBytes(32).toString('hex');run('INSERT INTO sessions VALUES(?,?,?)',hash(token),id,Date.now()+180*86400000);res.cookie('pure_session',token,{httpOnly:true,sameSite:'strict',secure:process.env.COOKIE_SECURE==='true',maxAge:180*86400000,path:'/'});}
+  const v09=installV09(app,{io,db,auth,friends,pub,online,calls,gemini,dataDir,log,userOf});
+  function session(res,id) {const token=randomBytes(32).toString('hex');run('INSERT INTO sessions VALUES(?,?,?)',hash(token),id,Date.now()+180*86400000);res.cookie('pure_session',token,{httpOnly:true,sameSite:'strict',secure:process.env.COOKIE_SECURE==='true'||(process.env.COOKIE_SECURE!=='false'&&String(origin||'').startsWith('https://')),maxAge:180*86400000,path:'/'});}
   const authLimit=rateLimit({windowMs:15*60000,limit:40,message:{error:'ลองเข้าสู่ระบบถี่เกินไป กรุณารอสักครู่'}});
   app.post('/api/register',authLimit,async(req,res)=>{
     const {handle,name,password}=req.body;
@@ -316,12 +324,14 @@ export function createPureServer(options={}) {
       }
     }
     const text=typeof req.body.text==='string'?req.body.text.trim():'';const file=req.body.fileId||null,clientId=req.body.clientId;
-    if((!text&&!file)||text.length>5000||typeof clientId!=='string'||clientId.length>80)return res.status(400).json({error:'ข้อความไม่ถูกต้องหรือยาวเกิน 5,000 ตัว'});
+    const encrypted=text.startsWith(E2E_PREFIX);
+    if((!text&&!file)||(encrypted?!E2E_RE.test(text):text.length>5000)||typeof clientId!=='string'||clientId.length>80)return res.status(400).json({error:'ข้อความไม่ถูกต้องหรือยาวเกิน 5,000 ตัว'});
     if(file&&!one("SELECT 1 FROM files WHERE id=? AND owner=? AND (peer=? OR peer='public')",file,req.user.id,req.params.peer))return res.status(403).json({error:'ไม่มีสิทธิ์ใช้ไฟล์'});
     const existing=one('SELECT * FROM messages WHERE sender=? AND client_id=?',req.user.id,clientId);if(existing)return res.json({message:messageView(existing)});
-    const result=run('INSERT INTO messages(sender,receiver,text,file_id,created,client_id) VALUES(?,?,?,?,?,?)',req.user.id,req.params.peer,text,file,Date.now(),clientId);
+    const result=run('INSERT INTO messages(sender,receiver,text,file_id,created,client_id,encrypted) VALUES(?,?,?,?,?,?,?)',req.user.id,req.params.peer,text,file,Date.now(),clientId,encrypted?1:0);
+    if(!online.has(req.params.peer))v09.push.send(req.params.peer,{type:'message',title:req.user.name,body:encrypted?'🔒 ข้อความเข้ารหัสใหม่':(text||'ส่งไฟล์ถึงคุณ').slice(0,120),url:'/?chat='+encodeURIComponent(req.user.id)},{ttl:86400,urgency:'normal'}).catch(()=>{});
     const message=messageView(one('SELECT * FROM messages WHERE id=?',Number(result.lastInsertRowid)));io.to(req.user.id).to(req.params.peer).emit('message',message);res.status(201).json({message});
-    if(text&&text.toLowerCase().includes('@pure')){triggerPureAi({peer:req.params.peer,text,senderUser:req.user,beforeId:Number(result.lastInsertRowid)});}
+    if(text&&!encrypted&&text.toLowerCase().includes('@pure')){triggerPureAi({peer:req.params.peer,text,senderUser:req.user,beforeId:Number(result.lastInsertRowid)});}
   });
   app.post('/api/messages/:peer/read',auth,(req,res)=>{assertFriend(req.user.id,req.params.peer);const through=Number(req.body.through);if(!Number.isSafeInteger(through)||through<0)return res.status(400).json({error:'read cursor required'});run('UPDATE messages SET seen=? WHERE sender=? AND receiver=? AND seen IS NULL AND id<=?',Date.now(),req.params.peer,req.user.id,through);io.to(req.params.peer).emit('read',{peer:req.user.id,through});res.json({ok:true});});
   app.delete('/api/messages/:id',auth,(req,res)=>{const message=one('SELECT * FROM messages WHERE id=?',req.params.id);if(!message||![message.sender,message.receiver].includes(req.user.id))return res.status(404).json({error:'ไม่พบข้อความ'});if(message.sender!==req.user.id)return res.status(403).json({error:'เรียกคืนได้เฉพาะข้อความที่คุณส่ง'});if(!message.deleted){const fileId=message.file_id;run("UPDATE messages SET text='',file_id=NULL,deleted=1 WHERE id=?",message.id);purgeUnreferencedFile(fileId);io.to(message.sender).to(message.receiver).emit('message:deleted',{id:message.id});}res.json({ok:true});});
@@ -512,26 +522,26 @@ export function createPureServer(options={}) {
     socket.on('call:start',(data={},ack=()=>{})=>{
       if(typeof ack!=='function')return;
       const {peer,video}=data||{};if(typeof peer!=='string'||!friends(u.id,peer))return ack({error:'ต้องเป็นเพื่อนกันก่อน'});
-      if(!online.has(peer))return ack({error:'เพื่อนออฟไลน์'});
+      if(!online.has(peer)&&!v09.push.has(peer))return ack({error:'เพื่อนออฟไลน์'});
       if([...calls.values()].some(c=>[c.a,c.b].includes(peer)||[c.a,c.b].includes(u.id)))return ack({error:'มีสายกำลังใช้งานอยู่'});
       if(u.role==='admin'||isRoleAdmin(peer)){
         run("INSERT INTO friends(a,b,status,requester) VALUES(?,?,?,?) ON CONFLICT(a,b) DO UPDATE SET status='accepted'",...pair(u.id,peer),'accepted',u.id);
         io.to(peer).emit('friends');io.to(u.id).emit('friends');
       }
-      const id=randomUUID(),c={a:u.id,b:peer,accepted:false};c.timer=setTimeout(()=>endCall(id,'missed'),45000);calls.set(id,c);io.to(peer).emit('call:incoming',{id,from:pub(u),video:!!video});ack({id});
+      const id=randomUUID(),c={a:u.id,b:peer,accepted:false,video:!!video};if(!online.has(peer))v09.push.send(peer,{type:'call',id,title:'สายเรียกเข้า · '+u.name,body:video?'วิดีโอคอล PURE':'โทรด้วยเสียง PURE',url:'/?call='+id,video:!!video}).catch(()=>{});c.timer=setTimeout(()=>endCall(id,'missed'),45000);calls.set(id,c);io.to(peer).emit('call:incoming',{id,from:pub(u),video:!!video});ack({id});
     });
     socket.on('call:accept',({id}={})=>{const c=calls.get(id);if(c?.b!==u.id||c.accepted)return;c.accepted=true;clearTimeout(c.timer);io.to(c.a).emit('call:accepted',{id});io.to(c.b).except(socket.id).emit('call:end',{id,reason:'answered-elsewhere'});});
     socket.on('call:signal',({id,signal}={})=>{const c=calls.get(id);if(!c?.accepted||![c.a,c.b].includes(u.id)||!friends(c.a,c.b)||!signal||JSON.stringify(signal).length>70000)return;io.to(c.a===u.id?c.b:c.a).emit('call:signal',{id,signal});});
     socket.on('call:end',({id}={})=>{const c=calls.get(id);if(c&&[c.a,c.b].includes(u.id))endCall(id,'ended');});
     socket.on('disconnect',()=>{const n=(online.get(u.id)||1)-1;if(n)online.set(u.id,n);else{online.delete(u.id);presence(u.id);for(const [id,c]of calls)if([c.a,c.b].includes(u.id))endCall(id,'disconnected');}});
   });
-  app.get('/api/health',(_,res)=>res.json({ok:true,name:'PURE',version:'0.8.0'}));
+  app.get('/api/health',(_,res)=>res.json({ok:true,name:'PURE',version:'0.9.0'}));
   app.use('/api',(req,res)=>res.status(404).json({error:'ไม่พบ API'}));
   app.use(express.static(join(root,'public')));
-  app.use((err,req,res,next)=>{if(res.headersSent)return next(err);res.status(err.status|| (err.code==='LIMIT_FILE_SIZE'?413:500)).json({error:err.code==='LIMIT_FILE_SIZE'?'ไฟล์ใหญ่เกิน 25 MB':err.status?err.message:'เกิดข้อผิดพลาด กรุณาลองอีกครั้ง'});});
+  app.use((err,req,res,next)=>{if(res.headersSent)return next(err);if(!err.status&&err.code!=='LIMIT_FILE_SIZE')log.error('unhandled',{path:req.path,error:err.message,stack:process.env.NODE_ENV==='production'?undefined:err.stack});if(err.type==='entity.parse.failed')return res.status(400).json({error:'JSON ไม่ถูกต้อง'});if(err.type==='entity.too.large')return res.status(413).json({error:'ข้อมูลใหญ่เกินไป'});res.status(err.status|| (err.code==='LIMIT_FILE_SIZE'?413:500)).json({error:err.code==='LIMIT_FILE_SIZE'?'ไฟล์ใหญ่เกิน 25 MB':err.status?err.message:'เกิดข้อผิดพลาด กรุณาลองอีกครั้ง'});});
   let scanTimer;if(options.scan!==false){gemini.scan();scanTimer=setInterval(()=>gemini.scan(),86400000);scanTimer.unref();}
   const cleanTimer=setInterval(()=>run('DELETE FROM sessions WHERE expires<?',Date.now()),3600000);cleanTimer.unref();
-  return {app,http,io,db,async close(){stopStudio();stopSecretary();stopNearby();clearInterval(scanTimer);clearInterval(cleanTimer);for(const id of calls.keys())endCall(id,'shutdown');await new Promise(r=>io.close(r));db.close();}};
+  return {app,http,io,db,log,async close(){v09.close();stopStudio();stopSecretary();stopNearby();clearInterval(scanTimer);clearInterval(cleanTimer);for(const id of calls.keys())endCall(id,'shutdown');await new Promise(r=>io.close(r));db.close();}};
 }
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
   const port=Number(process.env.PORT)||3000,host=process.env.HOST||'0.0.0.0';
@@ -556,5 +566,7 @@ if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
     console.log(`   Admin:    http://localhost:${port}/admin`);
     console.log(`================================================================\n`);
   });
-  for(const signal of ['SIGINT','SIGTERM'])process.on(signal,async()=>{await server.close();process.exit(0);});
+  let stopping=false;
+  for(const signal of ['SIGINT','SIGTERM'])process.on(signal,async()=>{if(stopping)return;stopping=true;server.log.info('shutdown',{signal});const force=setTimeout(()=>process.exit(1),10000);force.unref();server.http.close();await server.close();process.exit(0);});
+  process.on('unhandledRejection',e=>server.log.error('unhandledRejection',{error:String(e?.message||e)}));
 }
