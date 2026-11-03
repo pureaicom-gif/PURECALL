@@ -47,10 +47,16 @@ article.e2e .message-original::before{content:'🔒 ';font-size:11px;opacity:.6}
 .aic-local progress{width:100%;accent-color:#00E676}
 .helper-settings{margin:8px 12px;padding:8px 12px;border:1px solid rgba(0,230,118,.35);border-radius:12px;background:#0b0f0c}
 .helper-settings summary{cursor:pointer;color:#6EE7B7;font-weight:600}
-.pet-stage.has-video{position:relative}
-.pet-stage .pet-video{position:absolute;left:50%;top:50%;transform:translate(-50%,-46%);width:min(62%,260px);aspect-ratio:1;border-radius:50%;object-fit:cover;pointer-events:none;
-  -webkit-mask-image:radial-gradient(circle,#000 58%,transparent 72%);mask-image:radial-gradient(circle,#000 58%,transparent 72%);filter:drop-shadow(0 0 18px rgba(0,230,118,.35))}
-.pet-stage.has-video canvas{opacity:.55}
+.pet-stage.has-video{position:relative;overflow:hidden;background:
+  radial-gradient(ellipse 60% 22% at 50% 86%,rgba(0,230,118,.28),transparent 70%),
+  radial-gradient(circle at 50% 45%,#0c1a12 0%,#050806 62%,#000 100%) !important;border-color:rgba(0,230,118,.25)}
+.pet-stage.has-video::before{content:"";position:absolute;inset:auto 0 0 0;height:38%;pointer-events:none;
+  background:repeating-linear-gradient(90deg,rgba(0,230,118,.10) 0 1px,transparent 1px 44px),repeating-linear-gradient(0deg,rgba(0,230,118,.10) 0 1px,transparent 1px 22px);
+  -webkit-mask-image:linear-gradient(transparent,#000 70%);mask-image:linear-gradient(transparent,#000 70%);transform:perspective(320px) rotateX(48deg);transform-origin:bottom}
+.pet-stage.has-video canvas{opacity:0}
+.pet-stage .pet-video{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(78%,340px);aspect-ratio:1;object-fit:cover;pointer-events:none;
+  mix-blend-mode:screen;-webkit-mask-image:radial-gradient(circle,#000 55%,transparent 71%);mask-image:radial-gradient(circle,#000 55%,transparent 71%)}
+.pet-stage.has-video .pet-stage-label,.pet-stage.has-video .pet-stage-bottom{z-index:1}
+.pet-stage.has-video .pet-stage-bottom{color:#E8FFF2}
 .pet-call-video{display:block;width:120px;height:120px;margin:8px auto 0;border-radius:50%;object-fit:cover;border:2px solid #00E676;box-shadow:0 0 24px rgba(0,230,118,.4)}
 progress.xp-bar{accent-color:#00E676}
-@media (prefers-reduced-motion:reduce){.pet-stage .pet-video{filter:none}}
