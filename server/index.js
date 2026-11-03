@@ -17,7 +17,7 @@ import { randomBytes, randomUUID, scrypt as scryptCb, timingSafeEqual, createHas
 import { promisify } from 'node:util';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { unlinkSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { unlinkSync, readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs';
 import { networkInterfaces } from 'node:os';
 import { openDatabase } from './db.js';
 import { migrate } from './v09/migrations.js';
@@ -55,7 +55,10 @@ export function createPureServer(options={}) {
   app.get('/download/pure.apk',(req,res)=>{
     res.set('Cache-Control','public, max-age=3600');
     res.type('application/vnd.android.package-archive');
-    res.download(join(root,'public','downloads','PURE-0.8.0-debug.apk'),'PURE-0.8.0.apk');
+    const dir=join(root,'public','downloads');let files=[];try{files=readdirSync(dir).filter(f=>/^PURE-[\d.]+-(release|debug)\.apk$/.test(f));}catch{}
+    const ver=f=>f.match(/PURE-([\d.]+)/)[1].split('.').map(Number),cmp=(a,b)=>{const x=ver(a),y=ver(b);for(let i=0;i<3;i++)if(x[i]!==y[i])return y[i]-x[i];return (b.includes('release')?1:0)-(a.includes('release')?1:0);};
+    const pick=files.sort(cmp)[0];if(!pick)return res.status(404).type('text').send('APK not published yet (run: node scripts/publish-release.mjs)');
+    res.download(join(dir,pick),pick.replace('-debug',''));
   });
   app.use('/api',rateLimit({windowMs:60000,limit:240,standardHeaders:true,legacyHeaders:false}));
   installWebGuide(app,{gemini,limit:options.webGuideLimit,getTts:()=>tts}); // own CORS allow-list; mounted before the same-origin guard

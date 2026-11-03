@@ -14,18 +14,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
       - uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: npm
       - run: npm ci
       - run: npm test
+      - run: for f in scripts/*.mjs scripts/lib/*.mjs; do node --check "$f"; done
       - run: docker build -t pure-server:${{ github.sha }} .
 
   android:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
