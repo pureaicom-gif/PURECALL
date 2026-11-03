@@ -11,3 +11,7 @@ android/local.properties
 test-results/
 SERVER-URL.html
 SERVER-URL.txt
+
+# owner-provided TTS reference voices (never commit)
+server/voices/*.wav
+server/voices/*.mp3
