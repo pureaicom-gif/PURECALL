@@ -42,3 +42,20 @@ test('Drama3 offline → 503 with device fallback', async () => {
     await assert.rejects(tts.speak('hello'), e => e.status === 503 && e.fallback === 'device');
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('Drama3 TTS fast mode: cache-only + background render, sentence split, prewarm', async () => {
+  const { splitSentences, COMMON_PHRASES } = await import('../server/tts.js');
+  assert.deepEqual(splitSentences('สวัสดีค่ะ ดิฉันคือเลขา PURE ได้เลย! OK.'), ['สวัสดีค่ะ', 'ดิฉันคือเลขา PURE ได้เลย!', 'OK.']);
+  const dir = mkdtempSync(join(tmpdir(), 'pure-tts-fast-'));
+  try {
+    const f = fakeDrama({ delay: 30 }); const tts = createTts({ dataDir: dir, fetcher: f.fetcher });
+    await assert.rejects(tts.speak('ทดสอบเร็ว', { mode: 'fast' }), e => e.status === 202 && e.pending);
+    await new Promise(r => setTimeout(r, 120));
+    assert.equal((await tts.speak('ทดสอบเร็ว', { mode: 'fast' })).cached, true);
+    const st = await tts.prewarm(['สวัสดีค่ะ ขอบคุณค่ะ', 'ขอบคุณค่ะ']); assert.equal(st.total, 2);
+    for (let i = 0; i < 50 && tts.stats().prewarm.running; i++) await new Promise(r => setTimeout(r, 20));
+    assert.equal(tts.stats().prewarm.done, 2); assert.equal(f.max(), 1);
+    assert.equal((await tts.speak('ขอบคุณค่ะ', { mode: 'fast' })).cached, true);
+    assert.ok(COMMON_PHRASES.length >= 10);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});

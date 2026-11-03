@@ -27,6 +27,7 @@ import { installV09, E2E_PREFIX, E2E_RE } from './v09/features.js';
 import { createGemini } from './gemini.js';
 import { installWebGuide } from './web-guide.js';
 import { createTts, installTts } from './tts.js';
+const PURE_APK_RELEASE_URL='https://github.com/purefxaidev/purecall-web/releases/download/v0.9.0/PURE-0.9.0-release.apk';
 import { installPetAI } from './pet-ai.js';
 import { PET_SPECIES } from '../public/pet-catalog.js';
 import { installNearby } from './nearby.js';
@@ -58,7 +59,7 @@ export function createPureServer(options={}) {
     res.type('application/vnd.android.package-archive');
     const dir=join(root,'public','downloads');let files=[];try{files=readdirSync(dir).filter(f=>/^PURE-[\d.]+-(release|debug)\.apk$/.test(f));}catch{}
     const ver=f=>f.match(/PURE-([\d.]+)/)[1].split('.').map(Number),cmp=(a,b)=>{const x=ver(a),y=ver(b);for(let i=0;i<3;i++)if(x[i]!==y[i])return y[i]-x[i];return (b.includes('release')?1:0)-(a.includes('release')?1:0);};
-    const pick=files.sort(cmp)[0];if(!pick)return res.status(404).type('text').send('APK not published yet (run: node scripts/publish-release.mjs)');
+    const pick=files.sort(cmp)[0];if(!pick){let url=process.env.PURE_APK_URL;try{url||=JSON.parse(readFileSync(join(dataDir,'version.json'),'utf8')).apkUrl;}catch{}url||=PURE_APK_RELEASE_URL;return res.redirect(302,url);}
     res.download(join(dir,pick),pick.replace('-debug',''));
   });
   app.use('/api',rateLimit({windowMs:60000,limit:240,standardHeaders:true,legacyHeaders:false}));
@@ -560,7 +561,8 @@ export function createPureServer(options={}) {
     socket.on('disconnect',()=>{const n=(online.get(u.id)||1)-1;if(n)online.set(u.id,n);else{online.delete(u.id);presence(u.id);for(const [id,c]of calls)if([c.a,c.b].includes(u.id))endCall(id,'disconnected');}});
   });
   const tts=options.tts||createTts({dataDir,fetcher:options.ttsFetch});
-  installTts(app,{tts,auth,adminOnly,limiter:rateLimit({windowMs:60_000,limit:30,standardHeaders:'draft-7',legacyHeaders:false})});
+  if(!options.tts&&process.env.DRAMA3_PREWARM!=='0'&&process.env.NODE_ENV!=='test'&&!process.env.NODE_TEST_CONTEXT&&options.prewarm!==false)setTimeout(()=>tts.health().then(ok=>ok&&tts.prewarm()).catch(()=>{}),15000).unref?.();
+  installTts(app,{tts,auth,adminOnly,limiter:rateLimit({windowMs:60_000,limit:120,standardHeaders:'draft-7',legacyHeaders:false})});
   if(typeof options.extendApp==='function')options.extendApp(app,{db,dataDir});
   // v0.9 in-app update + server discovery
   app.get('/api/app-config',(_,res)=>res.json({updateManifestUrl:process.env.UPDATE_MANIFEST_URL||'https://call.purefxai.store/version.json',githubReleaseApi:process.env.UPDATE_GITHUB_RELEASE_API||'https://api.github.com/repos/purefxaidev/purecall-web/releases/latest',serverJsonUrl:process.env.SERVER_JSON_URL||'https://call.purefxai.store/server.json',checkIntervalHours:6}));

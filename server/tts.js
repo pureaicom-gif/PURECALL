@@ -5,9 +5,16 @@
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, statSync, unlinkSync, renameSync } from 'node:fs';
 import { join } from 'node:path';
+import { splitSentences } from '../public/tts-split.js';
+export { splitSentences };
 
 export const DEFAULT_VOICE = 'pure-secretary.wav'; // owner-provided secretary voice (copy into Drama3 voice-samples/)
 export const MAX_TTS_CHARS = 600;
+// Measured on owner PC (RTX 5060 Ti 16GB, Q2_K, 8 expert layers on CPU): warm ≈10s render per 1s audio, cold first call ≈110s.
+// So: split into sentences, serve cached sentences instantly, render misses in the background, device voice meanwhile.
+export const COMMON_PHRASES = ['สวัสดีค่ะ', 'สวัสดีค่ะ ดิฉันคือเลขา PURE', 'วันนี้มีอะไรให้ช่วยไหมคะ', 'ได้เลยค่ะ', 'รับทราบค่ะ', 'ขอบคุณค่ะ', 'สักครู่นะคะ', 'กำลังดำเนินการให้ค่ะ',
+  'เรียบร้อยแล้วค่ะ', 'ขอโทษค่ะ ดิฉันไม่เข้าใจ ช่วยพูดอีกครั้งได้ไหมคะ', 'มีสายเรียกเข้าค่ะ', 'ต้องการรับสายไหมคะ', 'สายถูกวางแล้วค่ะ', 'ไม่มีผู้รับสายค่ะ',
+  'มีข้อความใหม่ค่ะ', 'ส่งข้อความแล้วค่ะ', 'ตอนนี้ออฟไลน์อยู่ ข้อความจะถูกส่งเมื่อกลับมาออนไลน์ค่ะ', 'แล้วพบกันใหม่นะคะ'];
 
 export function createTts({ url = process.env.DRAMA3_URL || 'http://127.0.0.1:7860', backend = process.env.DRAMA3_BACKEND || 'http://127.0.0.1:8035', dataDir, fetcher = fetch,
   timeoutMs = Number(process.env.DRAMA3_TIMEOUT_MS || 120000), maxQueue = 8, cacheMax = 500 } = {}) {
@@ -15,7 +22,7 @@ export function createTts({ url = process.env.DRAMA3_URL || 'http://127.0.0.1:78
   const settingsFile = join(dataDir, 'tts-settings.json');
   const settings = () => { try { return { voice: DEFAULT_VOICE, ...JSON.parse(readFileSync(settingsFile, 'utf8')) }; } catch { return { voice: process.env.DRAMA3_VOICE || DEFAULT_VOICE }; } };
   let online = null, checkedAt = 0, voicesCache = [];
-  let running = 0; const queue = []; const inflight = new Map();
+  let running = 0, prewarmState = { running: false, done: 0, total: 0 }; const queue = []; const inflight = new Map();
 
   async function health() {
     if (Date.now() - checkedAt < 15000 && online !== null) return online;
@@ -50,11 +57,15 @@ export function createTts({ url = process.env.DRAMA3_URL || 'http://127.0.0.1:78
       writeFileSync(settingsFile, JSON.stringify({ ...settings(), voice })); return settings();
     },
     /** Returns {audio:Buffer, cached} or throws {status:503, fallback:'device'} when Drama3 is offline/busy. */
-    async speak(rawText) {
+    async speak(rawText, opts = {}) {
       const text = String(rawText || '').replace(/\s+/g, ' ').trim().slice(0, MAX_TTS_CHARS);
       if (!text) throw Object.assign(new Error('text required'), { status: 400 });
       const voice = settings().voice, k = key(text, voice), file = join(cacheDir, k + '.wav');
       if (existsSync(file)) return { audio: readFileSync(file), cached: true };
+      if (opts.mode === 'fast') { // never block: kick off a background render and tell the client to use the device voice now
+        if (!inflight.has(k) && queue.length < maxQueue - 2) this.speak(text).catch(() => {});
+        throw Object.assign(new Error('rendering'), { status: 202, fallback: 'device', pending: true });
+      }
       if (inflight.has(k)) return inflight.get(k);
       const p = (async () => {
         if (!(await health())) throw Object.assign(new Error('drama3 offline'), { status: 503, fallback: 'device' });
@@ -66,14 +77,22 @@ export function createTts({ url = process.env.DRAMA3_URL || 'http://127.0.0.1:78
       })().finally(() => inflight.delete(k));
       inflight.set(k, p); return p;
     },
-    stats: () => ({ running, queued: queue.length, online }),
+    stats: () => ({ running, queued: queue.length, online, prewarm: prewarmState }),
+    /** Render phrases one by one in the background (never more than one queue slot). */
+    async prewarm(list = COMMON_PHRASES) {
+      list = [...new Set(list.flatMap(t => splitSentences(t)))];
+      if (prewarmState.running) return prewarmState; prewarmState = { running: true, done: 0, total: list.length, failed: 0, started: Date.now() };
+      (async () => { for (const t of list) { try { if (!(await health())) break; await this.speak(t); prewarmState.done++; } catch { prewarmState.failed++; } } prewarmState.running = false; prewarmState.ms = Date.now() - prewarmState.started; })();
+      return prewarmState;
+    },
   };
 }
 
 export function installTts(app, { tts, auth, adminOnly, limiter }) {
   const send = (res, out) => res.set({ 'Content-Type': 'audio/wav', 'Cache-Control': 'private, max-age=86400', 'X-TTS-Cache': out.cached ? 'hit' : 'miss' }).send(out.audio);
-  const fail = (res, e) => res.status(e.status || 500).json({ error: e.message, fallback: e.fallback || 'device' });
-  app.post('/api/tts', auth, limiter, async (req, res) => { try { send(res, await tts.speak(req.body?.text)); } catch (e) { fail(res, e); } });
+  const fail = (res, e) => res.status(e.status >= 400 ? e.status : 500).json({ error: e.message, fallback: e.fallback || 'device' });
+  app.post('/api/tts', auth, limiter, async (req, res) => { try { send(res, await tts.speak(req.body?.text, { mode: req.body?.mode === 'fast' ? 'fast' : 'wait' })); } catch (e) { if (e.pending) return res.status(202).json({ pending: true, fallback: 'device' }); fail(res, e); } });
+  app.post('/api/admin/tts/prewarm', auth, adminOnly, async (req, res) => res.json(await tts.prewarm(Array.isArray(req.body?.phrases) ? req.body.phrases.slice(0, 100).map(String) : undefined)));
   app.get('/api/tts/status', auth, async (_req, res) => res.json({ ...(await tts.voices()), ...tts.stats() }));
   app.put('/api/admin/tts/voice', auth, adminOnly, (req, res) => { try { res.json(tts.setVoice(req.body?.voice)); } catch (e) { fail(res, e); } });
   app.get('/api/admin/tts/voices', auth, adminOnly, async (_req, res) => res.json(await tts.voices()));
