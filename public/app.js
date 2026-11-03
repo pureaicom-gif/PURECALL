@@ -431,6 +431,12 @@ $('#btn-do-add-friend').onclick=safe(async()=>{
 function checkUrlParams(){
   try{
     const p=new URLSearchParams(location.search);v09.urlParams(p);
+    // 0.10 native shell deep links: ?tab=pet | ?chat=<id>&dial=voice|video | ?answer=<callId>&from=<json>&video=1
+    const native=['tab','chat','dial','answer','from','video'].some(k=>p.has(k));
+    if(p.has('tab'))tab(p.get('tab'));
+    if(p.has('chat')){const f=state.friends.find(x=>x.id===p.get('chat'));if(f){tab('chats');openChat(f).then(()=>{if(p.get('dial'))startCall(p.get('dial')==='video');}).catch(()=>{});}}
+    if(p.has('answer')){const from=JSON.parse(p.get('from')||'{}');const go=()=>incoming({id:p.get('answer'),from,video:p.get('video')==='1'});if(socket?.connected)go();else socket?.once('connect',go);}
+    if(native)window.history.replaceState({},document.title,location.pathname);
     if(p.has('add')){
       const handle=p.get('add');
       checkAndConfirmFriend(handle);

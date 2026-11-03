@@ -24,8 +24,10 @@
   <provider android:name="androidx.core.content.FileProvider" android:authorities="${applicationId}.updates" android:exported="false" android:grantUriPermissions="true"><meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths" /></provider>
   <service android:name=".HelperService" android:exported="false" android:foregroundServiceType="dataSync" />
   <activity android:name=".OfflineActivity" android:exported="false" android:configChanges="orientation|screenSize|keyboardHidden" />
-  <activity android:name=".MainActivity" android:exported="true" android:configChanges="orientation|screenSize|keyboardHidden" android:windowSoftInputMode="adjustResize">
+  <activity android:name=".NativeActivity" android:exported="true" android:launchMode="singleTask" android:configChanges="orientation|screenSize|keyboardHidden|screenLayout|smallestScreenSize" android:windowSoftInputMode="adjustResize">
    <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
   </activity>
+  <!-- v0.10: WebView host for screens not yet native (calls, pet, studio, admin…). Opened by NativeActivity only. -->
+  <activity android:name=".MainActivity" android:exported="false" android:configChanges="orientation|screenSize|keyboardHidden" android:windowSoftInputMode="adjustResize" />
  </application>
 </manifest>

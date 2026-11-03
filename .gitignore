@@ -23,3 +23,5 @@ backups/
 *.jks
 *.keystore
 keystore-password.txt
+android/ui/build/
+android/.kotlin/

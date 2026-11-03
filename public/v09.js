@@ -13,6 +13,7 @@ const e2e={pair:null,myFp:null,peers:new Map(),shared:new Map(),ready:null,plain
 async function sha256Hex(s){return [...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s)))].map(x=>x.toString(16).padStart(2,'0')).join('');}
 async function e2eSetup(){
  if(!crypto.subtle||!window.indexedDB)return;
+ if(window.PureAndroid?.nativeE2E?.())return; // native 0.10 app owns this device's E2E key
  const slot='pair.'+me.id;let pair=await idb.get(slot).catch(()=>null);
  if(!pair){pair=await crypto.subtle.generateKey({name:'ECDH',namedCurve:'P-256'},false,['deriveKey']);await idb.set(slot,pair);}
  e2e.pair=pair;const jwk=await crypto.subtle.exportKey('jwk',pair.publicKey);const pubJwk={kty:'EC',crv:'P-256',x:jwk.x,y:jwk.y};

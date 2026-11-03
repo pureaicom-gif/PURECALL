@@ -247,6 +247,10 @@ public class MainActivity extends Activity {
         } catch (Exception ignored) {}
     }
 
+    /** v0.10: a full URL (server origin + path) to open directly, sent by NativeActivity for screens still on the web. */
+    static final String EXTRA_NATIVE_URL = "nativeUrl";
+    private boolean nativeMode = false;
+
     @Override
     public void onCreate(Bundle saved) {
         super.onCreate(saved);
@@ -261,7 +265,9 @@ public class MainActivity extends Activity {
         Updater.ensureChannel(this);
         try { UpdateWorker.schedule(this); } catch (Exception ignored) {}
         String savedManual = getPreferences(0).getString("server", "");
-        if (manualServer() && !savedManual.isEmpty()) { showSetup(); openServer(savedManual); }
+        String nativeUrl = getIntent() != null ? getIntent().getStringExtra(EXTRA_NATIVE_URL) : null;
+        if (nativeUrl != null && ServerDiscovery.originOf(nativeUrl) != null) { nativeMode = true; showSetup(); openServer(nativeUrl); }
+        else if (manualServer() && !savedManual.isEmpty()) { showSetup(); openServer(savedManual); }
         else showWaiting();
         handleNotificationIntent(getIntent());
         new Thread(() -> checkForUpdate(getIntent() != null && getIntent().getBooleanExtra("showUpdate", false))).start();
@@ -852,7 +858,8 @@ public class MainActivity extends Activity {
         bar.setBackgroundColor(Color.rgb(17, 18, 20));
         bar.setPadding(dp(6), dp(4), dp(6), dp(4));
 
-        Button home = button(" ตั้งค่า", Color.rgb(38, 45, 56), Color.rgb(240, 243, 248), () -> {
+        Button home = button(nativeMode ? " ← กลับ" : " ตั้งค่า", Color.rgb(38, 45, 56), Color.rgb(240, 243, 248), () -> {
+            if (nativeMode) { finish(); return; }
             new AlertDialog.Builder(this)
                 .setMessage("กลับหน้าตั้งค่า? สายที่กำลังโทรจะสิ้นสุด")
                 .setPositiveButton("กลับ", (d, w) -> showSetup())
@@ -926,6 +933,10 @@ public class MainActivity extends Activity {
                 // FCM hook: returns the token stored by a Firebase service if one is bundled; empty otherwise.
                 return getSharedPreferences("pure", MODE_PRIVATE).getString("fcm_token", "");
             }
+
+            /** v0.10: true when opened from the native Compose shell, which owns the E2E device key. */
+            @JavascriptInterface
+            public boolean nativeE2E() { return nativeMode; }
 
             /** Called by the web app right after a successful login/register. */
             @JavascriptInterface
@@ -1181,6 +1192,8 @@ public class MainActivity extends Activity {
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         setIntent(intent);
+        String nativeUrl = intent != null ? intent.getStringExtra(EXTRA_NATIVE_URL) : null;
+        if (nativeUrl != null && ServerDiscovery.originOf(nativeUrl) != null) { nativeMode = true; intent.removeExtra(EXTRA_NATIVE_URL); openServer(nativeUrl); return; }
         handleNotificationIntent(intent);
         if (intent != null && intent.getBooleanExtra("showUpdate", false)) new Thread(() -> checkForUpdate(true)).start();
     }
