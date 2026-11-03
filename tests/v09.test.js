@@ -118,3 +118,17 @@ test('Group call mesh signaling, 6-person cap, captions with translation, record
  const recP=event(ss[1],'call:recording');so.emit('call:recording',{room,active:true});const rec=await recP;assert.equal(rec.by.id,owner.id);assert.equal(rec.active,true);
  const leftP=event(so,'gcall:left');ss[0].emit('gcall:leave',{room});assert.equal((await leftP).user,others[0].id);
 });
+
+test('Helper relay: sealed E2E envelopes deliver once; forged/redirected/plaintext rejected',async t=>{
+ const {sealEnvelope}=await import('../server/v09/relay.js');
+ const {req,user,befriend}=await boot(t);const a=await user('relaya'),b=await user('relayb'),c=await user('relayc');await befriend(a,b);
+ const k=(await req('/api/relay/key',null,a.cookie)).data.key;assert.ok(k.length>20);
+ const text='e2e1:'+'A'.repeat(16)+':'+'C'.repeat(40),ts=Date.now();
+ const env=sealEnvelope(k,{from:a.id,to:b.id,clientId:'r1',ts,text});
+ const send=envs=>req('/api/relay/deliver',{envelopes:envs});
+ let r=await send([env,{...env,to:c.id},{...env,clientId:'r2'},sealEnvelope(k,{from:a.id,to:b.id,clientId:'r3',ts,text:'hello plain'}),sealEnvelope(k,{from:a.id,to:c.id,clientId:'r4',ts,text}),sealEnvelope(k,{from:a.id,to:b.id,clientId:'r5',ts:ts-8*86400000,text})]);
+ assert.deepEqual(r.data.results.map(x=>x.status),['delivered','bad-mac','bad-mac','not-e2e','not-friends','expired']);
+ assert.equal((await send([env])).data.results[0].status,'duplicate');
+ const msgs=(await req('/api/messages/'+a.id,null,b.cookie)).data;const list=msgs.messages||msgs;assert.equal(list.filter(m=>m.client_id==='r1'||m.clientId==='r1').length,1);
+ assert.equal((await req('/api/relay/key')).status,401);
+});

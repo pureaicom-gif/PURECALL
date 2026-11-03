@@ -12,6 +12,7 @@ import helmet from 'helmet';
 import { rateLimit } from 'express-rate-limit';
 import multer from 'multer';
 import { createServer } from 'node:http';
+import { loadRelaySecret, relayKey, checkEnvelope, RELAY_MAX_BATCH } from './v09/relay.js';
 import { Server } from 'socket.io';
 import { randomBytes, randomUUID, scrypt as scryptCb, timingSafeEqual, createHash, createHmac } from 'node:crypto';
 import { promisify } from 'node:util';
@@ -338,6 +339,23 @@ export function createPureServer(options={}) {
     if(!online.has(req.params.peer))v09.push.send(req.params.peer,{type:'message',title:req.user.name,body:encrypted?'🔒 ข้อความเข้ารหัสใหม่':(text||'ส่งไฟล์ถึงคุณ').slice(0,120),url:'/?chat='+encodeURIComponent(req.user.id)},{ttl:86400,urgency:'normal'}).catch(()=>{});
     const message=messageView(one('SELECT * FROM messages WHERE id=?',Number(result.lastInsertRowid)));io.to(req.user.id).to(req.params.peer).emit('message',message);res.status(201).json({message});
     if(text&&!encrypted&&text.toLowerCase().includes('@pure')){triggerPureAi({peer:req.params.peer,text,senderUser:req.user,beforeId:Number(result.lastInsertRowid)});}
+  });
+  // --- helper-phone store-and-forward relay (E2E only; see server/v09/relay.js)
+  const relaySecret=loadRelaySecret(dataDir);
+  app.get('/api/relay/key',auth,(req,res)=>res.set('Cache-Control','no-store').json({key:relayKey(relaySecret,req.user.id),maxAgeMs:7*86400000}));
+  app.post('/api/relay/deliver',rateLimit({windowMs:60000,limit:30,standardHeaders:true,legacyHeaders:false}),(req,res)=>{
+    const list=Array.isArray(req.body?.envelopes)?req.body.envelopes:null;
+    if(!list||list.length>RELAY_MAX_BATCH)return res.status(400).json({error:'envelopes[] (max '+RELAY_MAX_BATCH+')'});
+    const results=list.map(e=>{
+      const err=checkEnvelope(relaySecret,e,{e2eRe:E2E_RE});if(err)return {clientId:e?.clientId,status:err};
+      const f=one("SELECT status FROM friends WHERE a=? AND b=?",...pair(e.from,e.to));if(!f||f.status!=='accepted')return {clientId:e.clientId,status:'not-friends'};
+      if(one('SELECT 1 FROM messages WHERE sender=? AND client_id=?',e.from,e.clientId))return {clientId:e.clientId,status:'duplicate'};
+      const r=run('INSERT INTO messages(sender,receiver,text,file_id,created,client_id,encrypted) VALUES(?,?,?,?,?,?,1)',e.from,e.to,e.text,null,e.ts,e.clientId);
+      const message=messageView(one('SELECT * FROM messages WHERE id=?',Number(r.lastInsertRowid)));io.to(e.from).to(e.to).emit('message',message);
+      if(!online.has(e.to))v09.push.send(e.to,{type:'message',title:'PURE',body:'🔒 ข้อความเข้ารหัสใหม่ (ส่งต่อผ่าน helper)',url:'/?chat='+encodeURIComponent(e.from)},{ttl:86400,urgency:'normal'}).catch(()=>{});
+      return {clientId:e.clientId,status:'delivered',id:message.id};
+    });
+    res.json({results});
   });
   app.post('/api/messages/:peer/read',auth,(req,res)=>{assertFriend(req.user.id,req.params.peer);const through=Number(req.body.through);if(!Number.isSafeInteger(through)||through<0)return res.status(400).json({error:'read cursor required'});run('UPDATE messages SET seen=? WHERE sender=? AND receiver=? AND seen IS NULL AND id<=?',Date.now(),req.params.peer,req.user.id,through);io.to(req.params.peer).emit('read',{peer:req.user.id,through});res.json({ok:true});});
   app.delete('/api/messages/:id',auth,(req,res)=>{const message=one('SELECT * FROM messages WHERE id=?',req.params.id);if(!message||![message.sender,message.receiver].includes(req.user.id))return res.status(404).json({error:'ไม่พบข้อความ'});if(message.sender!==req.user.id)return res.status(403).json({error:'เรียกคืนได้เฉพาะข้อความที่คุณส่ง'});if(!message.deleted){const fileId=message.file_id;run("UPDATE messages SET text='',file_id=NULL,deleted=1 WHERE id=?",message.id);purgeUnreferencedFile(fileId);io.to(message.sender).to(message.receiver).emit('message:deleted',{id:message.id});}res.json({ok:true});});
