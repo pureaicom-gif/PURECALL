@@ -81,7 +81,7 @@ try{
  if(shots){
   const m=await browser.newContext({viewport:{width:390,height:844},deviceScaleFactor:2,storageState:await a.ctx.storageState()});const mp=await m.newPage();await mp.goto(base+'/');await mp.locator('#connection-dot.connected').waitFor({state:'attached',timeout:15000});await mp.waitForTimeout(800);await mp.screenshot({path:join(shots,'purecall-app-mobile.png')});
   for(const [path,name] of [['/pet-gallery.html','pet-gallery'],['/timeline-preview.html','timeline']]){await mp.goto(base+path);await mp.waitForTimeout(1200);await mp.screenshot({path:join(shots,'purecall-app-'+name+'.png')});}
-  for(const tab of ['studio','pets','timeline']){const btn=a.page.locator(`.rail [data-tab="${tab}"]`);if(await btn.count()){await btn.first().click();await a.page.waitForTimeout(1500);await shot(a.page,'tab-'+tab);}}
+  for(const tab of ['studio','pet','timeline']){const btn=a.page.locator(`.rail [data-tab="${tab}"]`);if(await btn.count()){await btn.first().click();await a.page.waitForTimeout(1500);await shot(a.page,'tab-'+tab);}}
   server.db.prepare("UPDATE users SET role='admin' WHERE id=?").run(a.user.id);await a.page.goto(base+'/admin');await a.page.waitForTimeout(1500);await shot(a.page,'admin');
  }
  const bad=errors.filter(e=>!/Permissions|NotAllowed|net::ERR|push/i.test(e));

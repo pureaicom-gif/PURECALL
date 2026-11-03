@@ -47,3 +47,10 @@ article.e2e .message-original::before{content:'🔒 ';font-size:11px;opacity:.6}
 .aic-local progress{width:100%;accent-color:#00E676}
 .helper-settings{margin:8px 12px;padding:8px 12px;border:1px solid rgba(0,230,118,.35);border-radius:12px;background:#0b0f0c}
 .helper-settings summary{cursor:pointer;color:#6EE7B7;font-weight:600}
+.pet-stage.has-video{position:relative}
+.pet-stage .pet-video{position:absolute;left:50%;top:50%;transform:translate(-50%,-46%);width:min(62%,260px);aspect-ratio:1;border-radius:50%;object-fit:cover;pointer-events:none;
+  -webkit-mask-image:radial-gradient(circle,#000 58%,transparent 72%);mask-image:radial-gradient(circle,#000 58%,transparent 72%);filter:drop-shadow(0 0 18px rgba(0,230,118,.35))}
+.pet-stage.has-video canvas{opacity:.55}
+.pet-call-video{display:block;width:120px;height:120px;margin:8px auto 0;border-radius:50%;object-fit:cover;border:2px solid #00E676;box-shadow:0 0 24px rgba(0,230,118,.4)}
+progress.xp-bar{accent-color:#00E676}
+@media (prefers-reduced-motion:reduce){.pet-stage .pet-video{filter:none}}
