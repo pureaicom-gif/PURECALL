@@ -299,7 +299,7 @@ public class MainActivity extends Activity {
             try {
                 org.json.JSONObject o = new org.json.JSONObject(Updater.get(origin + "/api/app-config", 6000));
                 SharedPreferences.Editor e = Updater.prefs(this).edit();
-                for (String[] k : new String[][]{{"updateManifestUrl", "update_manifest_url"}, {"githubReleaseApi", "update_github_api"}, {"serverJsonUrl", "server_json_url"}}) {
+                for (String[] k : new String[][]{{"updateManifestUrl", "update_manifest_url"}, {"githubReleaseApi", "update_github_api"}, {"serverJsonUrl", "server_json_url"}, {"primaryOrigin", "primary_origin"}}) {
                     String v = o.optString(k[0], ""); if (VersionUtil.isHttpsUrl(v)) e.putString(k[1], v);
                 }
                 e.apply();
@@ -356,15 +356,47 @@ public class MainActivity extends Activity {
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(Color.BLACK);
         root.setOnApplyWindowInsetsListener((v, insets) -> {
+            int l, t, r, b, ime = 0;
             if (Build.VERSION.SDK_INT >= 30) {
-                android.graphics.Insets b = insets.getInsets(WindowInsets.Type.systemBars() | WindowInsets.Type.ime());
-                v.setPadding(b.left, b.top, b.right, b.bottom);
+                android.graphics.Insets s = insets.getInsets(WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
+                l = s.left; t = s.top; r = s.right; b = s.bottom;
+                ime = insets.getInsets(WindowInsets.Type.ime()).bottom;
             } else {
-                v.setPadding(insets.getSystemWindowInsetLeft(), insets.getSystemWindowInsetTop(), insets.getSystemWindowInsetRight(), insets.getSystemWindowInsetBottom());
+                l = insets.getSystemWindowInsetLeft(); t = insets.getSystemWindowInsetTop(); r = insets.getSystemWindowInsetRight(); b = insets.getSystemWindowInsetBottom();
             }
+            if (web != null && web.getParent() == root) {
+                // 0.9.1 edge-to-edge: WebView draws under the bars; the page pads itself with --pure-sa-* (px, CSS).
+                v.setPadding(0, 0, 0, ime > b ? ime : 0);
+                pushSafeArea(l, t, r, ime > b ? 0 : b);
+            } else v.setPadding(l, t, r, Math.max(b, ime));
             return insets;
         });
+        if (Build.VERSION.SDK_INT >= 28) getWindow().getAttributes().layoutInDisplayCutoutMode = Build.VERSION.SDK_INT >= 30 ? android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS : android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
         setContentView(root);
+    }
+
+    /** 0.9.1: replaces the old 5-button native top bar (opened from the web "เพิ่มเติม" menu). */
+    private void showNativeMenu() {
+        String[] items = {"สแกน QR", "แชต (หน้าแรก)", "แอดมิน", "โหมดออฟไลน์", "ตั้งค่าเซิร์ฟเวอร์"};
+        new AlertDialog.Builder(this).setTitle("PURE " + BuildConfig.VERSION_NAME).setItems(items, (d, i) -> {
+            if (i == 0) openScanner();
+            else if (i == 1) { if (web != null) web.loadUrl(serverOrigin); }
+            else if (i == 2) { if (web != null) web.loadUrl(serverOrigin + "/admin"); }
+            else if (i == 3) { if (web != null) web.loadUrl("about:blank"); showSetup(); startActivity(new Intent(this, OfflineActivity.class)); }
+            else new AlertDialog.Builder(this).setMessage("กลับหน้าตั้งค่า? สายที่กำลังโทรจะสิ้นสุด").setPositiveButton("กลับ", (d2, w) -> showSetup()).setNegativeButton("ยกเลิก", null).show();
+        }).show();
+    }
+
+    private int[] safeArea = {0, 0, 0, 0};
+    private void pushSafeArea(int l, int t, int r, int b) {
+        float d = getResources().getDisplayMetrics().density;
+        safeArea = new int[]{Math.round(l / d), Math.round(t / d), Math.round(r / d), Math.round(b / d)};
+        applySafeArea();
+    }
+    private void applySafeArea() {
+        if (web == null) return;
+        int[] a = safeArea;
+        web.evaluateJavascript("(function(s){s.setProperty('--pure-sa-l','" + a[0] + "px');s.setProperty('--pure-sa-t','" + a[1] + "px');s.setProperty('--pure-sa-r','" + a[2] + "px');s.setProperty('--pure-sa-b','" + a[3] + "px');document.documentElement.classList.add('pure-android')})(document.documentElement.style)", null);
     }
 
     // ---- 0.9.1: auto-connect. Poll server.json with backoff; manual setup only behind a small link. ----
@@ -855,8 +887,7 @@ public class MainActivity extends Activity {
         offline.setTextSize(10);
         bar.addView(offline, new LinearLayout.LayoutParams(0, dp(36), 1));
 
-        topBar = bar;
-        root.addView(bar);
+        topBar = bar; // 0.9.1: no longer added — the web UI is full-screen; actions live in showNativeMenu()
 
         web = new WebView(this);
         root.addView(web, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
@@ -892,6 +923,11 @@ public class MainActivity extends Activity {
             public String fcmToken() {
                 // FCM hook: returns the token stored by a Firebase service if one is bundled; empty otherwise.
                 return getSharedPreferences("pure", MODE_PRIVATE).getString("fcm_token", "");
+            }
+
+            @JavascriptInterface
+            public void nativeMenu() {
+                runOnUiThread(() -> showNativeMenu());
             }
 
             @JavascriptInterface
@@ -935,7 +971,7 @@ public class MainActivity extends Activity {
         web.setBackgroundColor(Color.BLACK);
 
         web.setWebViewClient(new WebViewClient() {
-            @Override public void onPageFinished(WebView v,String url){CookieManager.getInstance().flush();if(serverOrigin.startsWith("https://")&&url!=null&&url.startsWith(serverOrigin))syncAppConfig(serverOrigin);super.onPageFinished(v,url);}
+            @Override public void onPageFinished(WebView v,String url){CookieManager.getInstance().flush();if(serverOrigin.startsWith("https://")&&url!=null&&url.startsWith(serverOrigin))syncAppConfig(serverOrigin);applySafeArea();super.onPageFinished(v,url);}
             @Override
             public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r) {
                 if (audioUrl(v, r) || voiceUrl(v, r)) return true;

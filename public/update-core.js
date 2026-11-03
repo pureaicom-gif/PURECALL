@@ -1,5 +1,6 @@
 // PURE v0.9 — shared update / server-discovery logic (browser + Node, no deps).
 export const DEFAULT_MANIFEST_URL = 'https://call.purefxai.store/version.json';
+export const PRIMARY_SERVER_ORIGIN = 'https://api.purefxai.store';
 export const DEFAULT_SERVER_JSON_URL = 'https://call.purefxai.store/server.json';
 export const GITHUB_RELEASE_API = 'https://api.github.com/repos/purefxaidev/purecall-web/releases/latest';
 const HEX64 = /^[0-9a-f]{64}$/;

@@ -582,7 +582,7 @@ export function createPureServer(options={}) {
   installComfy(app,{comfy,auth,adminOnly,limiter:rateLimit({windowMs:60_000,limit:Number(process.env.COMFY_RATE||10),standardHeaders:'draft-7',legacyHeaders:false,keyGenerator:req=>req.user.id,message:{error:'comfy rate limited'}})});
   if(typeof options.extendApp==='function')options.extendApp(app,{db,dataDir});
   // v0.9 in-app update + server discovery
-  app.get('/api/app-config',(_,res)=>res.json({updateManifestUrl:process.env.UPDATE_MANIFEST_URL||'https://call.purefxai.store/version.json',githubReleaseApi:process.env.UPDATE_GITHUB_RELEASE_API||'https://api.github.com/repos/purefxaidev/purecall-web/releases/latest',serverJsonUrl:process.env.SERVER_JSON_URL||'https://call.purefxai.store/server.json',checkIntervalHours:6}));
+  app.get('/api/app-config',(_,res)=>res.json({updateManifestUrl:process.env.UPDATE_MANIFEST_URL||'https://call.purefxai.store/version.json',githubReleaseApi:process.env.UPDATE_GITHUB_RELEASE_API||'https://api.github.com/repos/purefxaidev/purecall-web/releases/latest',primaryOrigin:process.env.PRIMARY_ORIGIN||'https://api.purefxai.store',serverJsonUrl:process.env.SERVER_JSON_URL||'https://call.purefxai.store/server.json',checkIntervalHours:6}));
   for(const name of ['version.json','server.json'])app.get('/'+name,(_,res)=>{const f=join(dataDir,name);if(!existsSync(f))return res.status(404).json({error:'not published'});res.set('Cache-Control','no-cache').type('json').send(readFileSync(f,'utf8'));});
   app.get('/api/health',(_,res)=>res.json({ok:true,name:'PURE',version:'0.9.0'}));
   app.use('/api',(req,res)=>res.status(404).json({error:'ไม่พบ API'}));
