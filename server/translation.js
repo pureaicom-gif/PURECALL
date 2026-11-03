@@ -30,7 +30,7 @@ export function installTranslation(app,{db,auth,blocked,gemini,fetcher=fetch}){
   const message=db.prepare(group?'SELECT * FROM group_messages WHERE id=?':'SELECT * FROM messages WHERE id=?').get(id);
   const allowed=message&&(group?db.prepare('SELECT 1 FROM group_members WHERE group_id=? AND user_id=?').get(message.group_id,req.user.id):[message.sender,message.receiver].includes(req.user.id)&&!blocked(message.sender,message.receiver));
   if(!allowed)return res.status(404).json({error:'ไม่พบข้อความ'});
-  if(message.deleted||!message.text)return res.json({text:'',language});
+  if(message.deleted||!message.text||String(message.text).startsWith('e2e1:'))return res.json({text:'',language});
   const key=[req.user.id,group,id,language].join(':');
   if(cache.has(key))return res.json({text:cache.get(key),language});
   try{

@@ -24,6 +24,8 @@ import { migrate } from './v09/migrations.js';
 import { createLogger, requestLogger } from './v09/log.js';
 import { installV09, E2E_PREFIX, E2E_RE } from './v09/features.js';
 import { createGemini } from './gemini.js';
+import { installWebGuide } from './web-guide.js';
+import { createTts, installTts } from './tts.js';
 import { installPetAI } from './pet-ai.js';
 import { PET_SPECIES } from '../public/pet-catalog.js';
 import { installNearby } from './nearby.js';
@@ -47,7 +49,7 @@ export function createPureServer(options={}) {
   app.disable('x-powered-by');
   if(process.env.TRUST_PROXY)app.set('trust proxy',process.env.TRUST_PROXY==='true'?1:process.env.TRUST_PROXY);
   app.use(requestLogger(log));
-  app.use(helmet({contentSecurityPolicy:{directives:{defaultSrc:["'self'"],scriptSrc:["'self'"],styleSrc:["'self'"],imgSrc:["'self'",'blob:','data:'],mediaSrc:["'self'",'blob:'],connectSrc:["'self'"],workerSrc:["'self'"],manifestSrc:["'self'"],objectSrc:["'none'"],frameAncestors:["'none'"],baseUri:["'self'"],formAction:["'self'"],upgradeInsecureRequests:null}},crossOriginEmbedderPolicy:false,strictTransportSecurity:!!origin}));
+  app.use(helmet({contentSecurityPolicy:{directives:{defaultSrc:["'self'"],scriptSrc:["'self'"],styleSrc:["'self'"],styleSrcAttr:["'unsafe-inline'"],imgSrc:["'self'",'blob:','data:'],mediaSrc:["'self'",'blob:'],connectSrc:["'self'"],workerSrc:["'self'"],manifestSrc:["'self'"],objectSrc:["'none'"],frameAncestors:["'none'"],baseUri:["'self'"],formAction:["'self'"],upgradeInsecureRequests:null}},crossOriginEmbedderPolicy:false,strictTransportSecurity:!!origin}));
   app.get('/healthz',(req,res)=>{try{db.prepare('SELECT 1').get();res.set('Cache-Control','no-store').json({ok:true,version:'0.9.0',uptime:Math.round(process.uptime()),sockets:io.engine.clientsCount});}catch(e){res.status(503).json({ok:false});}});
   app.use(express.json({limit:'64kb'}));
   app.get('/download/pure.apk',(req,res)=>{
@@ -56,6 +58,7 @@ export function createPureServer(options={}) {
     res.download(join(root,'public','downloads','PURE-0.8.0-debug.apk'),'PURE-0.8.0.apk');
   });
   app.use('/api',rateLimit({windowMs:60000,limit:240,standardHeaders:true,legacyHeaders:false}));
+  installWebGuide(app,{gemini,limit:options.webGuideLimit,getTts:()=>tts}); // own CORS allow-list; mounted before the same-origin guard
   app.use('/api',(req,res,next)=>originAllowed(req)?next():res.status(403).json({error:'Origin ไม่ถูกต้อง'}));
   const one=(sql,...args)=>db.prepare(sql).get(...args), all=(sql,...args)=>db.prepare(sql).all(...args), run=(sql,...args)=>db.prepare(sql).run(...args);
   function userOf(req) {
@@ -535,6 +538,12 @@ export function createPureServer(options={}) {
     socket.on('call:end',({id}={})=>{const c=calls.get(id);if(c&&[c.a,c.b].includes(u.id))endCall(id,'ended');});
     socket.on('disconnect',()=>{const n=(online.get(u.id)||1)-1;if(n)online.set(u.id,n);else{online.delete(u.id);presence(u.id);for(const [id,c]of calls)if([c.a,c.b].includes(u.id))endCall(id,'disconnected');}});
   });
+  const tts=options.tts||createTts({dataDir,fetcher:options.ttsFetch});
+  installTts(app,{tts,auth,adminOnly,limiter:rateLimit({windowMs:60_000,limit:30,standardHeaders:'draft-7',legacyHeaders:false})});
+  if(typeof options.extendApp==='function')options.extendApp(app,{db,dataDir});
+  // v0.9 in-app update + server discovery
+  app.get('/api/app-config',(_,res)=>res.json({updateManifestUrl:process.env.UPDATE_MANIFEST_URL||'https://call.purefxai.store/version.json',githubReleaseApi:process.env.UPDATE_GITHUB_RELEASE_API||'https://api.github.com/repos/purefxaidev/purecall-web/releases/latest',serverJsonUrl:process.env.SERVER_JSON_URL||'https://call.purefxai.store/server.json',checkIntervalHours:6}));
+  for(const name of ['version.json','server.json'])app.get('/'+name,(_,res)=>{const f=join(dataDir,name);if(!existsSync(f))return res.status(404).json({error:'not published'});res.set('Cache-Control','no-cache').type('json').send(readFileSync(f,'utf8'));});
   app.get('/api/health',(_,res)=>res.json({ok:true,name:'PURE',version:'0.9.0'}));
   app.use('/api',(req,res)=>res.status(404).json({error:'ไม่พบ API'}));
   app.use(express.static(join(root,'public')));
