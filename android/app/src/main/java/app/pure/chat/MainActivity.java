@@ -439,11 +439,11 @@ public class MainActivity extends Activity {
         if (!waiting) return;
         new Thread(() -> {
             String found = ServerDiscovery.refresh(this);
-            boolean alive = !found.isEmpty() && reachable(found);
+            boolean alive = !found.isEmpty(); // refresh() only returns /healthz-verified origins
             runOnUiThread(() -> {
                 if (!waiting) return;
                 if (alive) { stopWaiting(); getPreferences(0).edit().putString("server", found).putBoolean("server_manual", false).apply(); openServer(found); return; }
-                long delay = Math.min(30000L, 2000L << Math.min(retryAttempt++, 4));
+                long delay = Math.min(10000L, 2000L << Math.min(retryAttempt++, 3));
                 if (waitStatus != null) waitStatus.setText((found.isEmpty() ? "ยังไม่พบเซิร์ฟเวอร์" : "เซิร์ฟเวอร์ยังไม่ตอบ") + " · ลองใหม่ใน " + (delay / 1000) + " วิ (ครั้งที่ " + retryAttempt + ")");
                 retryHandler.postDelayed(this::tryDiscover, delay);
             });
@@ -843,6 +843,7 @@ public class MainActivity extends Activity {
         showingSetup = false;
         isScanning = false;
         serverOrigin = url;
+        { String o = ServerDiscovery.originOf(url); if (o != null) { serverOrigin = o; SessionVault.attach(this, o); } }
         base();
 
         LinearLayout bar = new LinearLayout(this);
@@ -895,13 +896,14 @@ public class MainActivity extends Activity {
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);
         s.setGeolocationEnabled(true);
-        s.setUserAgentString(s.getUserAgentString() + " PUREAndroid/0.6.2");
+        s.setUserAgentString(s.getUserAgentString() + " PUREAndroid/" + BuildConfig.VERSION_NAME);
         s.setDomStorageEnabled(true);
         s.setDatabaseEnabled(true);
         s.setAllowFileAccess(false);
         s.setAllowContentAccess(false);
         s.setMediaPlaybackRequiresUserGesture(false);
         s.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
+        WebViewTuning.apply(web);
 
         localAi = new LocalAi(this, web);
         if ((getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0 && getIntent() != null && getIntent().hasExtra("pure_llm_selftest")) localAi.selfTest(getIntent().getStringExtra("pure_llm_selftest"));
@@ -923,6 +925,20 @@ public class MainActivity extends Activity {
             public String fcmToken() {
                 // FCM hook: returns the token stored by a Firebase service if one is bundled; empty otherwise.
                 return getSharedPreferences("pure", MODE_PRIVATE).getString("fcm_token", "");
+            }
+
+            /** Called by the web app right after a successful login/register. */
+            @JavascriptInterface
+            public void sessionSaved(boolean remember) {
+                runOnUiThread(() -> {
+                    getPreferences(0).edit().putBoolean("remember_login", remember).apply();
+                    if (remember) SessionVault.capture(MainActivity.this, serverOrigin); else SessionVault.clear(MainActivity.this);
+                });
+            }
+
+            @JavascriptInterface
+            public void sessionCleared() {
+                runOnUiThread(() -> { getPreferences(0).edit().putBoolean("remember_login", false).apply(); SessionVault.forget(MainActivity.this, serverOrigin); });
             }
 
             @JavascriptInterface
@@ -971,7 +987,7 @@ public class MainActivity extends Activity {
         web.setBackgroundColor(Color.BLACK);
 
         web.setWebViewClient(new WebViewClient() {
-            @Override public void onPageFinished(WebView v,String url){CookieManager.getInstance().flush();if(serverOrigin.startsWith("https://")&&url!=null&&url.startsWith(serverOrigin))syncAppConfig(serverOrigin);applySafeArea();super.onPageFinished(v,url);}
+            @Override public void onPageFinished(WebView v,String url){CookieManager.getInstance().flush();if(getPreferences(0).getBoolean("remember_login",true))SessionVault.capture(MainActivity.this,serverOrigin);if(serverOrigin.startsWith("https://")&&url!=null&&url.startsWith(serverOrigin))syncAppConfig(serverOrigin);applySafeArea();super.onPageFinished(v,url);}
             @Override
             public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r) {
                 if (audioUrl(v, r) || voiceUrl(v, r)) return true;

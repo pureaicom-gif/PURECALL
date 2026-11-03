@@ -88,7 +88,7 @@ export function createPureServer(options={}) {
   const stopNearby=installNearby(app,{db,auth,blocked,pub});
   installAssistant(app,{db,auth,gemini,fetcher:options.studioFetch,hermes:options.hermes});
   const v09=installV09(app,{io,db,auth,friends,pub,online,calls,gemini,dataDir,log,userOf});
-  function session(res,id) {const token=randomBytes(32).toString('hex');run('INSERT INTO sessions VALUES(?,?,?)',hash(token),id,Date.now()+180*86400000);res.cookie('pure_session',token,{httpOnly:true,sameSite:'strict',secure:process.env.COOKIE_SECURE==='true'||(process.env.COOKIE_SECURE!=='false'&&String(origin||'').startsWith('https://')),maxAge:180*86400000,path:'/'});}
+  function session(res,id,remember=true) {const token=randomBytes(32).toString('hex');const ttl=remember?90*86400000:86400000;run('INSERT INTO sessions VALUES(?,?,?)',hash(token),id,Date.now()+ttl);res.cookie('pure_session',token,{httpOnly:true,sameSite:'strict',secure:process.env.COOKIE_SECURE==='true'||(process.env.COOKIE_SECURE!=='false'&&String(origin||'').startsWith('https://')),...(remember?{maxAge:ttl}:{}),path:'/'});return token;}
   const authLimit=rateLimit({windowMs:15*60000,limit:40,message:{error:'ลองเข้าสู่ระบบถี่เกินไป กรุณารอสักครู่'}});
   app.post('/api/register',authLimit,async(req,res)=>{
     const {handle,name,password}=req.body;
@@ -96,7 +96,7 @@ export function createPureServer(options={}) {
     const salt=randomBytes(16).toString('hex'),derived=(await scrypt(password,salt,64)).toString('hex');
     const id=randomUUID();
     try {run('INSERT INTO users(id,handle,name,password,created,role) VALUES(?,?,?,?,?,?)',id,handle.toLowerCase(),name.trim(),`${salt}:${derived}`,Date.now(),'user');}catch{return res.status(409).json({error:'PURE ID นี้ถูกใช้แล้ว'});}
-    run('INSERT INTO pets(owner,updated) VALUES(?,?)',id,Date.now());session(res,id);res.status(201).json({user:pub(one('SELECT * FROM users WHERE id=?',id))});
+    run('INSERT INTO pets(owner,updated) VALUES(?,?)',id,Date.now());session(res,id,req.body.remember!==false);res.status(201).json({user:pub(one('SELECT * FROM users WHERE id=?',id))});
   });
   app.post('/api/login',authLimit,async(req,res)=>{
     const {handle,password}=req.body;if(typeof handle!=='string'||typeof password!=='string'||password.length>128)return res.status(400).json({error:'ข้อมูลไม่ถูกต้อง'});
@@ -105,7 +105,7 @@ export function createPureServer(options={}) {
     const derived=await scrypt(password,salt,64);
     if(!u||!timingSafeEqual(Buffer.from(key,'hex'),derived))return res.status(401).json({error:'ID หรือรหัสผ่านไม่ถูกต้อง'});
     if(u.banned)return res.status(403).json({error:'บัญชีนี้ถูกระงับโดยผู้ดูแลระบบ'});
-    session(res,u.id);res.json({user:pub(u)});
+    session(res,u.id,req.body.remember!==false);res.json({user:pub(u)});
   });
   app.post('/api/logout',auth,(req,res)=>{run('DELETE FROM sessions WHERE user_id=?',req.user.id);io.in(req.user.id).disconnectSockets(true);res.clearCookie('pure_session',{path:'/'});res.json({ok:true});});
   app.get('/api/qr',auth,async(req,res)=>{res.type('png').set('Cache-Control','private, no-store').send(await QRCode.toBuffer('pure:friend:'+req.user.handle,{width:320,margin:4,errorCorrectionLevel:'M'}));});
@@ -582,11 +582,11 @@ export function createPureServer(options={}) {
   installComfy(app,{comfy,auth,adminOnly,limiter:rateLimit({windowMs:60_000,limit:Number(process.env.COMFY_RATE||10),standardHeaders:'draft-7',legacyHeaders:false,keyGenerator:req=>req.user.id,message:{error:'comfy rate limited'}})});
   if(typeof options.extendApp==='function')options.extendApp(app,{db,dataDir});
   // v0.9 in-app update + server discovery
-  app.get('/api/app-config',(_,res)=>res.json({updateManifestUrl:process.env.UPDATE_MANIFEST_URL||'https://call.purefxai.store/version.json',githubReleaseApi:process.env.UPDATE_GITHUB_RELEASE_API||'https://api.github.com/repos/purefxaidev/purecall-web/releases/latest',primaryOrigin:process.env.PRIMARY_ORIGIN||'https://api.purefxai.store',serverJsonUrl:process.env.SERVER_JSON_URL||'https://call.purefxai.store/server.json',checkIntervalHours:6}));
+  app.get('/api/app-config',(_,res)=>res.json({updateManifestUrl:process.env.UPDATE_MANIFEST_URL||'https://call.purefxai.store/version.json',githubReleaseApi:process.env.UPDATE_GITHUB_RELEASE_API||'https://api.github.com/repos/purefxaidev/purecall-web/releases/latest',primaryOrigin:process.env.PRIMARY_ORIGIN||'https://api.purefxai.store',serverJsonUrl:process.env.SERVER_JSON_URL||'https://raw.githubusercontent.com/purefxaidev/purecall-web/main/server.json',checkIntervalHours:6}));
   for(const name of ['version.json','server.json'])app.get('/'+name,(_,res)=>{const f=join(dataDir,name);if(!existsSync(f))return res.status(404).json({error:'not published'});res.set('Cache-Control','no-cache').type('json').send(readFileSync(f,'utf8'));});
   app.get('/api/health',(_,res)=>res.json({ok:true,name:'PURE',version:'0.9.0'}));
   app.use('/api',(req,res)=>res.status(404).json({error:'ไม่พบ API'}));
-  app.use(express.static(join(root,'public')));
+  app.use(express.static(join(root,'public'),{etag:true,maxAge:'10m',setHeaders(res,p){if(/\.(html|json)$/.test(p)||/sw\.js$/.test(p))res.setHeader('Cache-Control','no-cache');else if(/\/(vendor|fonts)\//.test(p))res.setHeader('Cache-Control','public, max-age=604800');}}));
   app.use((err,req,res,next)=>{if(res.headersSent)return next(err);if(!err.status&&err.code!=='LIMIT_FILE_SIZE')log.error('unhandled',{path:req.path,error:err.message,stack:process.env.NODE_ENV==='production'?undefined:err.stack});if(err.type==='entity.parse.failed')return res.status(400).json({error:'JSON ไม่ถูกต้อง'});if(err.type==='entity.too.large')return res.status(413).json({error:'ข้อมูลใหญ่เกินไป'});res.status(err.status|| (err.code==='LIMIT_FILE_SIZE'?413:500)).json({error:err.code==='LIMIT_FILE_SIZE'?'ไฟล์ใหญ่เกิน 25 MB':err.status?err.message:'เกิดข้อผิดพลาด กรุณาลองอีกครั้ง'});});
   const adminEnv=options.admin===undefined?{handle:process.env.ADMIN_HANDLE,password:process.env.ADMIN_PASSWORD}:options.admin;
   const adminReady=(async()=>{const h=String(adminEnv?.handle||'').toLowerCase(),pw=adminEnv?.password;if(!h&&!pw)return;if(!/^[a-z0-9_]{3,24}$/.test(h)||typeof pw!=='string'||pw.length<8){log.warn('admin bootstrap skipped: ADMIN_HANDLE/ADMIN_PASSWORD invalid (password >= 8 chars)');return;}

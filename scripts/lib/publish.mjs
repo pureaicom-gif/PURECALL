@@ -1,6 +1,7 @@
 // Publish discovery/update JSON. Writes locally (data/ and public/) and, if PURE_PAGES_TOKEN is set,
 // commits the file to the GitHub Pages repo (default purefxaidev/purecall-web) via the contents API.
-import { writeFileSync, mkdirSync } from 'node:fs';
+import { writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 
 export const PAGES_REPO = process.env.PURE_PAGES_REPO || 'purefxaidev/purecall-web';
@@ -32,4 +33,27 @@ export async function publishToPages(path, body, { token = process.env.PURE_PAGE
 
 export function manualInstructions(name, root) {
   return `ยังไม่ได้ตั้ง PURE_PAGES_TOKEN จึงยังไม่ได้อัปโหลดอัตโนมัติ\n  ไฟล์อยู่ที่ ${join(root, 'data', name)}\n  อัปโหลดเองไปที่ repo ${PAGES_REPO} (branch ${PAGES_BRANCH}) ให้เปิดได้ที่ https://call.purefxai.store/${name}\n  หรือตั้งค่า: set PURE_PAGES_TOKEN=<fine-grained token: Contents read/write เฉพาะ repo นี้>`;
+}
+
+/** Fallback when no token: commit + push with this PC's existing git credentials (Git Credential Manager).
+ *  Uses a shallow clone in data/pages-repo; never prompts (GIT_TERMINAL_PROMPT=0). */
+export function publishViaGit(root, path, body, { repo = PAGES_REPO, branch = PAGES_BRANCH, git = 'git' } = {}) {
+  const dir = join(root, 'data', 'pages-repo');
+  const env = { ...process.env, GIT_TERMINAL_PROMPT: '0' };
+  const run = (...a) => execFileSync(git, a, { cwd: dir, env, stdio: ['ignore', 'pipe', 'pipe'], timeout: 60000 }).toString();
+  if (!existsSync(join(dir, '.git'))) execFileSync(git, ['clone', '--depth', '1', '-b', branch, `https://github.com/${repo}.git`, dir], { env, stdio: 'ignore', timeout: 120000 });
+  run('fetch', '--depth', '1', 'origin', branch); run('reset', '--hard', `origin/${branch}`);
+  writeFileSync(join(dir, path), body);
+  if (!run('status', '--porcelain', '--', path).trim()) return { published: true, repo, path, unchanged: true };
+  run('add', '--', path);
+  run('-c', 'user.name=PURE Server', '-c', 'user.email=server@purefxai.store', 'commit', '-m', `update ${path}`);
+  run('push', 'origin', `HEAD:${branch}`);
+  return { published: true, repo, path, via: 'git' };
+}
+
+/** Token API first; otherwise git with local credentials (disable with PURE_PAGES_GIT=0). */
+export async function publishAuto(root, path, body) {
+  if (process.env.PURE_PAGES_TOKEN) return publishToPages(path, body);
+  if (process.env.PURE_PAGES_GIT === '0') return { published: false, reason: 'PURE_PAGES_GIT=0' };
+  return publishViaGit(root, path, body);
 }

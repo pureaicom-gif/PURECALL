@@ -20,7 +20,7 @@
  <uses-feature android:name="android.hardware.camera" android:required="false" />
  <uses-feature android:name="android.hardware.bluetooth" android:required="false" />
  <queries><intent><action android:name="android.intent.action.TTS_SERVICE" /></intent></queries>
- <application android:theme="@style/AppTheme" android:label="PURE" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher_round" android:allowBackup="false" android:usesCleartextTraffic="true" android:supportsRtl="true">
+ <application android:hardwareAccelerated="true" android:largeHeap="true" android:theme="@style/AppTheme" android:label="PURE" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher_round" android:allowBackup="false" android:usesCleartextTraffic="true" android:supportsRtl="true">
   <provider android:name="androidx.core.content.FileProvider" android:authorities="${applicationId}.updates" android:exported="false" android:grantUriPermissions="true"><meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths" /></provider>
   <service android:name=".HelperService" android:exported="false" android:foregroundServiceType="dataSync" />
   <activity android:name=".OfflineActivity" android:exported="false" android:configChanges="orientation|screenSize|keyboardHidden" />
