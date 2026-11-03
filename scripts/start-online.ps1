@@ -1,4 +1,4 @@
-$ErrorActionPreference = 'Continue'
+﻿$ErrorActionPreference = 'Continue'
 $pureRoot = Split-Path -Parent $PSScriptRoot
 Set-Location $pureRoot
 
@@ -83,7 +83,13 @@ if ($tunnelUrl) {
     $txt | Out-File -FilePath (Join-Path $pureRoot "SERVER-URL.txt") -Encoding utf8
     $txt | Out-File -FilePath (Join-Path $pureRoot "dist\SERVER-URL.txt") -Encoding utf8
 
-    $qrUrl = "https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=" + [uri]::EscapeDataString($tunnelUrl)
+    # QR generated locally (node + qrcode package); falls back to external service only if node fails
+    $qrUrl = $null
+    try {
+        $env:PURE_QR_TEXT = $tunnelUrl
+        $qrUrl = (& node -e "require('qrcode').toDataURL(process.env.PURE_QR_TEXT,{width:220,margin:2,errorCorrectionLevel:'M'}).then(u=>process.stdout.write(u))" 2>$null | Out-String).Trim()
+    } catch {}
+    if (-not $qrUrl -or -not $qrUrl.StartsWith("data:image")) { $qrUrl = "https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=" + [uri]::EscapeDataString($tunnelUrl) }
     $html = "<!DOCTYPE html><html lang='th'><head><meta charset='UTF-8'><title>PURE Online</title>" +
             "<style>body{background:#0b0d11;color:#f0f3f8;font-family:system-ui,sans-serif;text-align:center;padding:40px 20px;}" +
             ".card{max-width:520px;margin:0 auto;background:#13161c;border:1px solid #2c3340;border-radius:16px;padding:30px;}" +
