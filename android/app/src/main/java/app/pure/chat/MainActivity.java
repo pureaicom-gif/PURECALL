@@ -17,6 +17,7 @@ import java.util.*;
 
 public class MainActivity extends Activity {
     private WebView web;
+    private LocalAi localAi;
     private LinearLayout root;
     private String serverOrigin = "";
     private PermissionRequest mediaRequest;
@@ -795,6 +796,9 @@ public class MainActivity extends Activity {
         s.setMediaPlaybackRequiresUserGesture(false);
         s.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
 
+        localAi = new LocalAi(this, web);
+        if ((getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0 && getIntent() != null && getIntent().hasExtra("pure_llm_selftest")) localAi.selfTest(getIntent().getStringExtra("pure_llm_selftest"));
+        web.addJavascriptInterface(localAi, "PureLocalAI");
         web.addJavascriptInterface(new Object() {
             @JavascriptInterface
             public void notifyMessage(String title, String body, String peerId, String groupId) {
@@ -1165,4 +1169,6 @@ public class MainActivity extends Activity {
             nm.notify(7001, b.build());
         } catch (Exception ignored) {}
     }
+
+    @Override public void onTrimMemory(int level) { super.onTrimMemory(level); if (level >= TRIM_MEMORY_RUNNING_LOW && localAi != null) localAi.trim(); }
 }

@@ -15,3 +15,8 @@ SERVER-URL.txt
 # owner-provided TTS reference voices (never commit)
 server/voices/*.wav
 server/voices/*.mp3
+public/server.json
+public/version.json
+public/downloads/*.apk
+android/app/.cxx/
+backups/
