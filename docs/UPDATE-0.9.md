@@ -58,3 +58,9 @@ llama.cpp เป็น submodule: `git clone --recursive ...` หรือ `git 
 
 ## เพิ่มเติม: โหมด Helper บนมือถือ (opt-in)
 มือถือ Android ช่วยส่งต่อข้อความเข้ารหัส (store-and-forward) และกระจาย heartbeat/discovery ใน Wi-Fi เดียวกัน — เปิดที่ "🛰️ โหมด Helper" ในรายการแชต ทำงานเฉพาะตอนชาร์จ/Wi-Fi/แบตพอ ดูรายละเอียดใน docs/PURE-NODE.md
+
+## Release signing (0.9.0)
+- Keystore อยู่นอก repo บนเครื่องผู้ดูแล (`C:\Users\puref\PURE-keys\pure-release.jks`, alias `pure`, PKCS12 RSA-4096) — ห้าม commit
+- เซ็นด้วย `apksigner sign --ks pure-release.jks --ks-key-alias pure ...` (v2+v3) หรือ build ด้วย env `PURE_KEYSTORE*`
+- Cert SHA-256: `44246c971ac7a488692f4e204858ef6672c7f91b12d3b28c28b0e83fe8286035` — ทุกเวอร์ชันถัดไปต้องเซ็นด้วยคีย์เดียวกัน ไม่งั้นติดตั้งทับไม่ได้
+- **สำรองคีย์** (jks + รหัสผ่าน) ไว้ ≥2 ที่แบบออฟไลน์/เข้ารหัส ถ้าหายจะอัปเดตแอปเดิมไม่ได้อีก

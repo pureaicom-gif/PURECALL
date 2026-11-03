@@ -20,3 +20,6 @@ public/version.json
 public/downloads/*.apk
 android/app/.cxx/
 backups/
+*.jks
+*.keystore
+keystore-password.txt
