@@ -119,7 +119,7 @@ if ($tunnelUrl) {
     Write-Host ""
     Write-Host "👑 แอดมินคอนโซล (Admin Console):" -ForegroundColor White
     Write-Host "   👉 $tunnelUrl/admin" -ForegroundColor Yellow
-    Write-Host "   PURE ID : purefxai | รหัสผ่าน: ***REMOVED***" -ForegroundColor Gray
+    Write-Host "   ตั้ง/รีเซ็ตรหัสแอดมิน: node scripts/set-admin.mjs" -ForegroundColor Gray
     Write-Host ""
     Write-Host "================================================================" -ForegroundColor Cyan
     Write-Host "💡 วิธีใช้งานบนมือถือ:" -ForegroundColor White

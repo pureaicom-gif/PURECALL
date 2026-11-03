@@ -10,7 +10,7 @@ start http://localhost:3000/admin
 echo.
 echo URL: http://localhost:3000/admin
 echo Admin ID: PUREFXAI
-echo Password: ***REMOVED***
+echo Password: (not shown - set it with: node scripts/set-admin.mjs)
 echo.
 echo If the server is not running, run START-SERVER.cmd or START-ONLINE.cmd first.
 timeout /t 3 >nul

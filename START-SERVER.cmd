@@ -13,7 +13,7 @@ if not exist node_modules\express (
 )
 echo.
 echo Starting PURE. The server address will appear below.
-echo Admin UI: http://localhost:3000/admin (ID: PUREFXAI / PASS: ***REMOVED***)
+echo Admin UI: http://localhost:3000/admin  (set or reset the admin login with: node scripts/set-admin.mjs)
 echo Phone: use this computer's Wi-Fi IP and the server port.
 echo Calls require HTTPS. See README.md for public deployment.
 echo Keep this window open. Press Ctrl+C to stop.
