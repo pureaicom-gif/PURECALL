@@ -257,14 +257,104 @@ public class MainActivity extends Activity {
                 requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, 21);
             }
         }
+        Updater.ensureChannel(this);
+        try { UpdateWorker.schedule(this); } catch (Exception ignored) {}
         showSetup();
         handleNotificationIntent(getIntent());
+        new Thread(() -> {
+            String found = ServerDiscovery.refresh(this);
+            runOnUiThread(() -> autoConnectDiscovered(found));
+            checkForUpdate(getIntent() != null && getIntent().getBooleanExtra("showUpdate", false));
+        }).start();
+    }
+
+    // ---- v0.9: server discovery ----
+    private boolean manualServer() { return getPreferences(0).getBoolean("server_manual", false); }
+
+    private void autoConnectDiscovered(String found) {
+        if (found == null || found.isEmpty() || !showingSetup || isScanning) return;
+        String saved = getPreferences(0).getString("server", "");
+        if (manualServer() && !saved.isEmpty()) return;
+        getPreferences(0).edit().putString("server", found).apply();
+        openServer(found);
+    }
+
+    /** Called on a main-frame load failure: re-read server.json; if the server moved (tunnel restarted), reconnect. */
+    private void rediscoverOrShowError(String failedOrigin, String err) {
+        new Thread(() -> {
+            String found = ServerDiscovery.refresh(this);
+            runOnUiThread(() -> {
+                if (!manualServer() && !found.isEmpty() && !found.equals(failedOrigin)) {
+                    getPreferences(0).edit().putString("server", found).apply();
+                    Toast.makeText(this, "เซิร์ฟเวอร์ย้ายที่อยู่ — กำลังเชื่อมต่อใหม่", Toast.LENGTH_SHORT).show();
+                    openServer(found);
+                } else showErrorScreen(failedOrigin, err);
+            });
+        }).start();
+    }
+
+    /** Server may override the update manifest / discovery URLs (https only). */
+    private void syncAppConfig(String origin) {
+        new Thread(() -> {
+            try {
+                org.json.JSONObject o = new org.json.JSONObject(Updater.get(origin + "/api/app-config", 6000));
+                SharedPreferences.Editor e = Updater.prefs(this).edit();
+                for (String[] k : new String[][]{{"updateManifestUrl", "update_manifest_url"}, {"githubReleaseApi", "update_github_api"}, {"serverJsonUrl", "server_json_url"}}) {
+                    String v = o.optString(k[0], ""); if (VersionUtil.isHttpsUrl(v)) e.putString(k[1], v);
+                }
+                e.apply();
+            } catch (Exception ignored) {}
+        }).start();
+    }
+
+    // ---- v0.9: in-app update ----
+    private AlertDialog updateDialog;
+
+    private void checkForUpdate(boolean userAsked) {
+        Updater.Manifest m = Updater.fetch(this);
+        if (m == null) return;
+        String verdict = VersionUtil.evaluate(m.versionCode, m.minSupported, Updater.currentCode(this));
+        if ("none".equals(verdict)) return;
+        if (!"force".equals(verdict) && !userAsked && Updater.prefs(this).getInt("dismissed_update", 0) >= m.versionCode) { Updater.notifyUpdate(this, m); return; }
+        runOnUiThread(() -> showUpdateDialog(m, "force".equals(verdict)));
+    }
+
+    private void showUpdateDialog(Updater.Manifest m, boolean force) {
+        if (isFinishing()) return;
+        if (updateDialog != null && updateDialog.isShowing()) updateDialog.dismiss();
+        LinearLayout box = new LinearLayout(this); box.setOrientation(LinearLayout.VERTICAL); box.setPadding(dp(22), dp(18), dp(22), dp(8));
+        GradientDrawable bg = new GradientDrawable(); bg.setColor(Color.BLACK); bg.setCornerRadius(dp(20)); bg.setStroke(dp(1), Color.rgb(6, 78, 59));
+        TextView title = new TextView(this); title.setText(force ? "ต้องอัปเดต PURE ก่อนใช้งาน" : "PURE " + m.versionName + " พร้อมแล้ว"); title.setTextColor(Color.WHITE); title.setTextSize(19); title.setTypeface(null, 1);
+        TextView body = new TextView(this); body.setText((force ? "เวอร์ชันนี้เก่าเกินไปและไม่รองรับแล้ว\n\n" : "") + (m.changelogTh == null ? "" : m.changelogTh)); body.setTextColor(Color.rgb(170, 172, 180)); body.setTextSize(14); body.setPadding(0, dp(10), 0, dp(12));
+        ProgressBar bar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal); bar.setMax(100); bar.setVisibility(View.GONE);
+        box.addView(title); box.addView(body); box.addView(bar);
+        AlertDialog.Builder b = new AlertDialog.Builder(this).setView(box).setCancelable(!force).setPositiveButton("อัปเดต", null);
+        if (!force) b.setNegativeButton("ภายหลัง", (d, w) -> Updater.prefs(this).edit().putInt("dismissed_update", m.versionCode).apply());
+        updateDialog = b.create();
+        updateDialog.setOnShowListener(d -> {
+            if (updateDialog.getWindow() != null) updateDialog.getWindow().setBackgroundDrawable(bg);
+            Button ok = updateDialog.getButton(AlertDialog.BUTTON_POSITIVE); ok.setTextColor(Color.rgb(0, 230, 118));
+            Button later = updateDialog.getButton(AlertDialog.BUTTON_NEGATIVE); if (later != null) later.setTextColor(Color.rgb(140, 142, 150));
+            ok.setOnClickListener(v -> {
+                ok.setEnabled(false); ok.setText("กำลังดาวน์โหลด…"); bar.setVisibility(View.VISIBLE);
+                new Thread(() -> Updater.download(this, m, new Updater.Progress() {
+                    public void onProgress(int pct) { runOnUiThread(() -> { bar.setProgress(pct); ok.setText("กำลังดาวน์โหลด " + pct + "%"); }); }
+                    public void onDone(java.io.File apk) { runOnUiThread(() -> {
+                        ok.setEnabled(true); ok.setText("ติดตั้ง");
+                        ok.setOnClickListener(v2 -> { if (!Updater.install(MainActivity.this, apk)) Toast.makeText(MainActivity.this, "เปิดสิทธิ์ \"ติดตั้งแอปที่ไม่รู้จัก\" ให้ PURE แล้วกด ติดตั้ง อีกครั้ง", Toast.LENGTH_LONG).show(); });
+                        if (!Updater.install(MainActivity.this, apk)) Toast.makeText(MainActivity.this, "เปิดสิทธิ์ \"ติดตั้งแอปที่ไม่รู้จัก\" ให้ PURE แล้วกด ติดตั้ง อีกครั้ง", Toast.LENGTH_LONG).show();
+                    }); }
+                    public void onError(String msg) { runOnUiThread(() -> { ok.setEnabled(true); ok.setText("ลองอีกครั้ง"); bar.setVisibility(View.GONE); Toast.makeText(MainActivity.this, msg, Toast.LENGTH_LONG).show(); }); }
+                })).start();
+            });
+        });
+        updateDialog.show();
     }
 
     private void base() {
         root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(Color.rgb(11, 12, 14));
+        root.setBackgroundColor(Color.BLACK);
         root.setOnApplyWindowInsetsListener((v, insets) -> {
             if (Build.VERSION.SDK_INT >= 30) {
                 android.graphics.Insets b = insets.getInsets(WindowInsets.Type.systemBars() | WindowInsets.Type.ime());
@@ -380,11 +470,15 @@ public class MainActivity extends Activity {
                 Toast.makeText(this, "รูปแบบ URL ไม่ถูกต้อง ตัวอย่าง: https://xxxx.trycloudflare.com", Toast.LENGTH_LONG).show();
                 return;
             }
-            getPreferences(0).edit().putString("server", url).apply();
+            getPreferences(0).edit().putString("server", url).putBoolean("server_manual", !url.equals(ServerDiscovery.cached(this))).apply();
             openServer(url);
         });
         connectBtn.setTypeface(null, 1);
         content.addView(connectBtn);
+        content.addView(button(" ใช้เซิร์ฟเวอร์อัตโนมัติ (server.json)", Color.rgb(20, 20, 24), Color.rgb(240, 243, 248), () -> {
+            getPreferences(0).edit().putBoolean("server_manual", false).apply();
+            new Thread(() -> { String f = ServerDiscovery.refresh(this); runOnUiThread(() -> { if (f.isEmpty()) Toast.makeText(this, "ยังไม่พบ server.json — ใส่ลิงก์เองได้", Toast.LENGTH_LONG).show(); else { getPreferences(0).edit().putString("server", f).apply(); openServer(f); } }); }).start();
+        }));
 
         // Section 2: Local Wi-Fi Preset Helper
         TextView localTitle = text(" หรือเชื่อมต่อผ่าน Wi-Fi ในบ้านเดียวกัน (LAN)", 13);
@@ -708,6 +802,17 @@ public class MainActivity extends Activity {
             }
 
             @JavascriptInterface
+            public void notifyCall(String title, String body, String url) {
+                runOnUiThread(() -> showCallNotification(title, body, url));
+            }
+
+            @JavascriptInterface
+            public String fcmToken() {
+                // FCM hook: returns the token stored by a Firebase service if one is bundled; empty otherwise.
+                return getSharedPreferences("pure", MODE_PRIVATE).getString("fcm_token", "");
+            }
+
+            @JavascriptInterface
             public void openScanner() {
                 runOnUiThread(() -> MainActivity.this.openScanner());
             }
@@ -745,10 +850,10 @@ public class MainActivity extends Activity {
         CookieManager.getInstance().setAcceptCookie(true);
         CookieManager.getInstance().setAcceptThirdPartyCookies(web, true);
 
-        web.setBackgroundColor(Color.rgb(11, 12, 14));
+        web.setBackgroundColor(Color.BLACK);
 
         web.setWebViewClient(new WebViewClient() {
-            @Override public void onPageFinished(WebView v,String url){CookieManager.getInstance().flush();super.onPageFinished(v,url);}
+            @Override public void onPageFinished(WebView v,String url){CookieManager.getInstance().flush();if(serverOrigin.startsWith("https://")&&url!=null&&url.startsWith(serverOrigin))syncAppConfig(serverOrigin);super.onPageFinished(v,url);}
             @Override
             public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r) {
                 if (audioUrl(v, r) || voiceUrl(v, r)) return true;
@@ -758,7 +863,7 @@ public class MainActivity extends Activity {
             @Override
             public void onReceivedError(WebView v, WebResourceRequest r, WebResourceError e) {
                 if (r != null && r.isForMainFrame()) {
-                    showErrorScreen(serverOrigin, e != null && Build.VERSION.SDK_INT >= 23 ? e.getDescription().toString() : "เชื่อมต่อไม่ได้");
+                    rediscoverOrShowError(serverOrigin, e != null && Build.VERSION.SDK_INT >= 23 ? e.getDescription().toString() : "เชื่อมต่อไม่ได้");
                 }
             }
         });
@@ -943,10 +1048,13 @@ public class MainActivity extends Activity {
         super.onNewIntent(intent);
         setIntent(intent);
         handleNotificationIntent(intent);
+        if (intent != null && intent.getBooleanExtra("showUpdate", false)) new Thread(() -> checkForUpdate(true)).start();
     }
 
     private void handleNotificationIntent(Intent intent) {
         if (intent == null || web == null) return;
+        String callUrl = intent.getStringExtra("callUrl");
+        if (callUrl != null && callUrl.startsWith("/") && !callUrl.startsWith("//") && !serverOrigin.isEmpty()) { intent.removeExtra("callUrl"); web.loadUrl(serverOrigin + callUrl); return; }
         String peerId = intent.getStringExtra("peerId");
         String groupId = intent.getStringExtra("groupId");
         if (peerId != null && !peerId.isEmpty()) {
@@ -1035,5 +1143,26 @@ public class MainActivity extends Activity {
         }
         if (web != null) web.destroy();
         super.onDestroy();
+    }
+
+    private void showCallNotification(String title, String body, String url) {
+        try {
+            NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+            if (Build.VERSION.SDK_INT >= 26) {
+                NotificationChannel ch = new NotificationChannel("pure_calls", "PURE Calls", NotificationManager.IMPORTANCE_HIGH);
+                ch.setDescription("Incoming calls");
+                nm.createNotificationChannel(ch);
+            }
+            Intent open = new Intent(this, MainActivity.class);
+            open.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            if (url != null && url.startsWith("/") && !url.startsWith("//")) open.putExtra("callUrl", url);
+            PendingIntent pi = PendingIntent.getActivity(this, 7001, open, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+            Notification.Builder b = Build.VERSION.SDK_INT >= 26 ? new Notification.Builder(this, "pure_calls") : new Notification.Builder(this);
+            b.setSmallIcon(android.R.drawable.sym_call_incoming).setContentTitle(title == null ? "PURE" : title)
+             .setContentText(body == null ? "" : body).setCategory(Notification.CATEGORY_CALL).setColor(0xFF00E676)
+             .setAutoCancel(true).setContentIntent(pi).setFullScreenIntent(pi, true)
+             .addAction(new Notification.Action.Builder(null, "รับสาย", pi).build());
+            nm.notify(7001, b.build());
+        } catch (Exception ignored) {}
     }
 }

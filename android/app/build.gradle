@@ -10,11 +10,22 @@ android {
         applicationId 'app.pure.chat'
         minSdk 26
         targetSdk 35
-        versionCode 14
-        versionName '0.8.0'
+        versionCode 15
+        versionName '0.9.0'
         buildConfigField 'String', 'PURE_SERVER_URL', '"' + escapedServerUrl + '"'
     }
     buildFeatures { buildConfig true }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
-    buildTypes { release { minifyEnabled false } }
+    signingConfigs {
+        release {
+            def ks = System.getenv('PURE_KEYSTORE')
+            if (ks) { storeFile file(ks); storePassword System.getenv('PURE_KEYSTORE_PASSWORD'); keyAlias System.getenv('PURE_KEY_ALIAS'); keyPassword System.getenv('PURE_KEY_PASSWORD') }
+        }
+    }
+    buildTypes { release { minifyEnabled false; if (System.getenv('PURE_KEYSTORE')) signingConfig signingConfigs.release } }
+}
+
+dependencies {
+    implementation 'androidx.work:work-runtime:2.9.1'
+    implementation 'androidx.core:core:1.13.1'
 }
