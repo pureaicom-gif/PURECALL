@@ -41,6 +41,11 @@ PURE-NODE.cmd            (Windows)    |    ./pure-node.sh   (Linux/macOS)
 ## ไฟล์ exe ตัวเดียว (ทางเลือก)
 Node 24 รองรับ Single Executable Application แต่ PURE ใช้ไฟล์ใน `server/` + `public/` + `node_modules` จึงแจกเป็นโฟลเดอร์ + `PURE-NODE.cmd` ง่ายและอัปเดตได้ดีกว่า (ยังไม่ได้ทำ SEA)
 
-## มือถือเป็น helper (สถานะ: ออกแบบ + primitive ฝั่งเซิร์ฟเวอร์)
+## มือถือเป็น helper (สถานะ: implemented ใน v0.9 — ยังไม่ได้ทดสอบบนเครื่องจริง)
+- เปิดใน app Android: รายการแชต → "🛰️ โหมด Helper" (opt-in, ค่าเริ่มต้น: เฉพาะเสียบชาร์จ + Wi-Fi + แบต ≥30%)
+- Foreground service (`HelperService`, type dataSync) ทุก 60 วินาที: cache heartbeat, ส่งคิวไป `POST /api/relay/deliver`, ถ้าเซิร์ฟเวอร์ล่มส่งต่อให้ helper อื่นใน LAN (NSD `_purehelper._tcp`)
+- คิวเก็บเฉพาะ envelope ที่เข้ารหัส E2E (`e2e1:`) + MAC ที่ผูก from/to/clientId ด้วยคีย์ต่อผู้ใช้ (`GET /api/relay/key`) → helper อ่าน/ปลอม/เปลี่ยนผู้รับไม่ได้; เซิร์ฟเวอร์ dedup ด้วย clientId; อายุ 7 วัน; คิวบนเครื่องเข้ารหัสด้วย AndroidKeyStore
+- origin ที่ได้จาก peer ไม่ถูกนำมาใช้อัตโนมัติ (ยังไม่ verify)
+
 heartbeat `/cluster/heartbeat` ของ primary เป็นข้อความที่ **เซ็นด้วย node key** อยู่แล้ว มือถือที่อยู่ใน registry (role helper) จึงเก็บ heartbeat ล่าสุดและส่งต่อให้แอปอื่นตรวจลายเซ็นได้เองเมื่อ server.json เข้าไม่ได้
 ยังไม่มี: บริการเบื้องหลังบน Android ที่ทำหน้าที่นี้ (มือถือไม่เหมาะเป็น primary/standby: แบตหมด, NAT, ระบบปิดแอปเบื้องหลัง)

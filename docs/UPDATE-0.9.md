@@ -55,3 +55,6 @@ Cloudflare Zero Trust → Tunnels → สร้าง tunnel ชี้ `http://l
 
 ### Clone repo
 llama.cpp เป็น submodule: `git clone --recursive ...` หรือ `git submodule update --init`
+
+## เพิ่มเติม: โหมด Helper บนมือถือ (opt-in)
+มือถือ Android ช่วยส่งต่อข้อความเข้ารหัส (store-and-forward) และกระจาย heartbeat/discovery ใน Wi-Fi เดียวกัน — เปิดที่ "🛰️ โหมด Helper" ในรายการแชต ทำงานเฉพาะตอนชาร์จ/Wi-Fi/แบตพอ ดูรายละเอียดใน docs/PURE-NODE.md

@@ -17,6 +17,7 @@ import {mountNearby} from './nearby.js';
 import {mountMarketplace} from './marketplace.js';
 import {v09} from './v09.js';
 import {askAssistant,rememberHistory,mountAssistantSettings} from './assistant-router.js';
+import {refreshRelayKey,handoff,mountHelperSettings} from './helper-mode.js';
 import {setupSmartReplies} from './smart-replies.js';
 const newId=()=>crypto.randomUUID?.() || Array.from(crypto.getRandomValues(new Uint8Array(16)),x=>x.toString(16).padStart(2,'0')).join('');
 const $=s=>document.querySelector(s), esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -43,6 +44,12 @@ const workspace=createWorkspace({state,esc,icon,renderConversations,toast});
 const translator=setupTranslation({api,state});
 const queuePanel=document.createElement('section');queuePanel.id='outbox-panel';queuePanel.hidden=true;$('#composer').before(queuePanel);
 const outbox=createOutbox({id:newId,online:()=>navigator.onLine&&!!socket?.connected,changed:renderOutbox,send:async item=>{const owner=state.user?.id;const d=await api(item.group?'/groups/'+item.target+'/messages':'/messages/'+item.target,{text:item.group?item.text:await v09.encryptOutgoing(item.target,item.text),clientId:item.clientId});if(state.user?.id!==owner)return;if((item.group?state.group?.id:state.peer?.id)===item.target&&!state.messages.some(m=>m.id===d.message.id)){state.messages.push(d.message);renderMessages();}}});
+// Helper mode: if the server is unreachable for >60s, seal pending 1:1 E2E messages into this phone's helper queue (server dedups by clientId).
+const handedKey=()=>'pure.handed.'+state.user?.id;
+setInterval(async()=>{if(!window.PureHelper||!state.user||(navigator.onLine&&socket?.connected))return;let handed;try{handed=new Set(JSON.parse(localStorage.getItem(handedKey())||'[]'));}catch{handed=new Set();}let n=0;
+  for(const item of outbox.list()){if(item.group||item.error||handed.has(item.clientId)||Date.now()-(item.created||0)<60000)continue;
+    const text=await v09.encryptOutgoing(item.target,item.text).catch(()=>'');if(await handoff({from:state.user.id,to:item.target,clientId:item.clientId,text}).catch(()=>false)){handed.add(item.clientId);n++;}}
+  if(n){localStorage.setItem(handedKey(),JSON.stringify([...handed].slice(-300)));toast(`ฝากข้อความเข้ารหัส ${n} ข้อความไว้กับโหมด Helper แล้ว`);}},30000);
 function renderOutbox(){const rows=outbox.list().filter(x=>x.target===(state.group?.id||state.peer?.id)&&x.group===!!state.group);queuePanel.hidden=!rows.length;queuePanel.innerHTML=rows.map(x=>'<div class="outbox-row"><span>'+esc(x.text)+'</span><small>'+esc(x.error||'รอส่ง · ส่งอัตโนมัติเมื่อเชื่อมต่อ')+'</small>'+(x.error?'<button type="button" data-retry="'+esc(x.clientId)+'">ลองใหม่</button>':'')+'<button type="button" data-cancel="'+esc(x.clientId)+'">นำออกจากคิว</button></div>').join('');}
 queuePanel.onclick=e=>{const b=e.target.closest('button');if(!b)return;if(b.dataset.retry)outbox.retry(b.dataset.retry);if(b.dataset.cancel)outbox.remove(b.dataset.cancel);};
 window.addEventListener('online',()=>outbox.flush());
@@ -51,7 +58,7 @@ window.addEventListener('online',()=>outbox.flush());
 async function refreshGroups(){try{const data=await api('/groups');state.groups=data.groups;state.groupInvites=data.invites||[];renderConversations();}catch(e){}}
 
 async function enter(user){
-  state.user=user;setupLocalization(user);outbox.login(user.id);soundAccount(user.id);workspace.login();$('#auth').hidden=true;$('#app').hidden=false;$('#my-avatar').textContent=initial(user);
+  state.user=user;setupLocalization(user);outbox.login(user.id);refreshRelayKey(api,user.id);mountHelperSettings($('#chat-list .list-footer')?.parentElement||document.body);soundAccount(user.id);workspace.login();$('#auth').hidden=true;$('#app').hidden=false;$('#my-avatar').textContent=initial(user);
   try{if('Notification' in window&&Notification.permission==='default')Notification.requestPermission().catch(()=>{});}catch(e){}
   socket?.disconnect();socket=io({reconnectionDelayMax:8000});v09.attach(socket,user);
   socket.on('connect',safe(async()=>{$('#connection-dot').classList.add('connected');outbox.flush();$('#connection-label').textContent='เชื่อมต่อแล้ว';await refreshFriends();await refreshGroups();if(state.peer)await openChat(state.peer);else if(state.group)await openGroup(state.group);checkUrlParams();}));
