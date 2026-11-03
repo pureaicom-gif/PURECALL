@@ -6,6 +6,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
@@ -47,13 +48,16 @@ class NativeApi(val origin: String) {
     suspend fun multipart(path: String, fields: Map<String, String>) = call(Request.Builder().url(origin + "/api" + path)
         .post(MultipartBody.Builder().setType(MultipartBody.FORM).apply { fields.forEach { (k, v) -> addFormDataPart(k, v) } }.build()).build())
 
+    suspend fun uploadImage(path: String, jpeg: ByteArray) = call(Request.Builder().url(origin + "/api" + path)
+        .post(MultipartBody.Builder().setType(MultipartBody.FORM).addFormDataPart("image", "avatar.jpg", jpeg.toRequestBody("image/jpeg".toMediaType())).build()).build())
+
     // ---- mapping ----
     fun avatarOf(id: String, j: JSONObject?): String? {
         val a = j?.opt("avatar")
         return when { a is String && a.isNotEmpty() -> if (a.startsWith("/")) origin + a else a; a is JSONObject -> "$origin/api/profiles/$id/media/avatar"; else -> null }
     }
     fun user(j: JSONObject): UiUser { val id = j.optString("id"); return UiUser(id, j.optString("handle"), j.optString("name").ifEmpty { j.optString("handle") },
-        j.optBoolean("online"), avatarOf(id, j), if (j.optBoolean("isAdmin")) "admin" else j.optString("role", "user")) }
+        j.optBoolean("online"), avatarOf(id, j), if (j.optBoolean("isAdmin")) "admin" else j.optString("role", "user"), j.optBoolean("ai") || j.optString("role") == "bot", j.str("statusText")) }
     fun users(a: JSONArray?) = (0 until (a?.length() ?: 0)).map { user(a!!.getJSONObject(it)) }
     fun post(j: JSONObject): UiPost {
         val media = j.opt("media"); val kind = j.optString("kind", "text")

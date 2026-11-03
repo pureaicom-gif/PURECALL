@@ -18,6 +18,7 @@ import java.util.*;
 public class MainActivity extends Activity {
     private WebView web;
     private LocalAi localAi;
+    private VoiceBridge voice;
     private LinearLayout root;
     private String serverOrigin = "";
     private PermissionRequest mediaRequest;
@@ -915,6 +916,7 @@ public class MainActivity extends Activity {
         localAi = new LocalAi(this, web);
         if ((getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0 && getIntent() != null && getIntent().hasExtra("pure_llm_selftest")) localAi.selfTest(getIntent().getStringExtra("pure_llm_selftest"));
         web.addJavascriptInterface(localAi, "PureLocalAI");
+        voice = new VoiceBridge(this, web); web.addJavascriptInterface(voice, "PureVoice");
         HelperBridge helper = new HelperBridge(this); helper.setOrigin(serverOrigin); helper.maybeStart();
         web.addJavascriptInterface(helper, "PureHelper");
         web.addJavascriptInterface(new Object() {
@@ -1289,6 +1291,7 @@ public class MainActivity extends Activity {
             scannerWeb = null;
         }
         if (web != null) web.destroy();
+        if (voice != null) voice.destroy();
         super.onDestroy();
     }
 

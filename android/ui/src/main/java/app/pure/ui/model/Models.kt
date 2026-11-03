@@ -2,7 +2,7 @@ package app.pure.ui.model
 
 import androidx.compose.runtime.Immutable
 
-@Immutable data class UiUser(val id: String, val handle: String, val name: String, val online: Boolean = false, val avatarUrl: String? = null, val role: String = "user") {
+@Immutable data class UiUser(val id: String, val handle: String, val name: String, val online: Boolean = false, val avatarUrl: String? = null, val role: String = "user", val ai: Boolean = false, val statusText: String = "") {
     val initial: String get() = (name.ifBlank { handle }).trim().take(1).uppercase()
     val isAdmin: Boolean get() = role == "admin"
 }
@@ -19,5 +19,5 @@ enum class Tab(val label: String) { Chats("แชต"), Friends("เพื่อ
 
 /** Screens that still run in the WebView (opened from native nav). `web` is the web app tab name. */
 enum class WebScreen(val label: String, val web: String, val adminOnly: Boolean = false) {
-    Pet("สัตว์เลี้ยง", "pet"), Market("ตลาด", "market"), Studio("AI Studio", "studio"), Admin("แอดมิน", "admin", adminOnly = true), FullWeb("เปิดเว็บเต็ม", "chats")
+    Pet("สัตว์เลี้ยง", "pet"), Market("ตลาด", "market"), Studio("AI Studio", "studio"), Voice("คุยด้วยเสียง", "voice"), Personas("เพื่อน AI", "personas"), Admin("แอดมิน", "admin", adminOnly = true), FullWeb("เปิดเว็บเต็ม", "chats")
 }

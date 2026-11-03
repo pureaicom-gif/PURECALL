@@ -37,6 +37,7 @@ fun Avatar(user: UiUser, size: Dp = 48.dp, ring: Boolean = false, showOnline: Bo
             Text(user.initial, color = Pure.Accent2, fontWeight = FontWeight.Bold, fontSize = (size.value * 0.4f).sp)
             if (user.avatarUrl != null) AsyncImage(user.avatarUrl, null, Modifier.fillMaxSize().clip(CircleShape), contentScale = ContentScale.Crop)
         }
+        if (user.ai) Text("AI", color = Pure.Bg, fontWeight = FontWeight.Bold, fontSize = 9.sp, modifier = Modifier.align(Alignment.TopEnd).clip(CircleShape).background(Pure.Accent).padding(horizontal = 4.dp))
         if (showOnline && user.online) Box(Modifier.align(Alignment.BottomEnd).size(size * 0.27f).clip(CircleShape).background(Pure.Bg).padding(2.dp).clip(CircleShape).background(Pure.Accent))
     }
 }

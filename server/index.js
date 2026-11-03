@@ -35,6 +35,7 @@ import { installAssistant } from './assistant.js';
 import { createJevRunner } from './jev-run.js';
 import { classifyTask } from './jev.js';
 import { createComfy, installComfy } from './comfy.js';
+import { installPersonas } from './personas.js';
 
 const scrypt=promisify(scryptCb), root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const hash=t=>createHash('sha256').update(t).digest('hex');
@@ -74,13 +75,16 @@ export function createPureServer(options={}) {
   }
   function auth(req,res,next) {req.user=userOf(req); if(!req.user)return res.status(401).json({error:'กรุณาเข้าสู่ระบบ'}); next();}
   function adminOnly(req,res,next) {if(req.user?.role!=='admin')return res.status(403).json({error:'สำหรับผู้ดูแลระบบ (Admin) เท่านั้น'}); next();}
-  const pub=u=>({id:u.id,handle:u.handle,name:u.name,online:online.has(u.id),role:u.role||'user',isAdmin:(u.role==='admin')});
+  const pubExtra=id=>{const x=one("SELECT u.status_text AS s,m.updated AS a FROM users u LEFT JOIN profile_media m ON m.owner=u.id AND m.kind='avatar' WHERE u.id=?",id)||{};return {statusText:x.s||'',avatar:x.a?'/api/profiles/'+encodeURIComponent(id)+'/media/avatar?v='+x.a:null};};
+  const pub=u=>({id:u.id,handle:u.handle,name:u.name,online:online.has(u.id),role:u.role||'user',isAdmin:(u.role==='admin'),...pubExtra(u.id),...(u.role==='bot'?{ai:true,badge:'AI'}:{})});
   const blocked=(a,b)=>!!one('SELECT 1 FROM blocks WHERE (owner=? AND target=?) OR (owner=? AND target=?)',a,b,b,a);
   const isRoleAdmin=id=>!!one("SELECT 1 FROM users WHERE id=? AND role='admin'",id);
   const friends=(a,b)=>!blocked(a,b)&&(one("SELECT 1 FROM friends WHERE a=? AND b=? AND status='accepted'",...pair(a,b))||isRoleAdmin(a)||isRoleAdmin(b));
   const assertFriend=(a,b)=>{if(!friends(a,b))throw Object.assign(new Error('ต้องเป็นเพื่อนกันก่อน'),{status:403});};
-  installAccountProfile(app,{db,auth});
+  installAccountProfile(app,{db,auth,io});
   installProfileMedia(app,{db,auth,blocked});
+  const comfy=options.comfy||createComfy({dataDir,fetcher:options.comfyFetch});
+  const personas=installPersonas(app,{db,auth,adminOnly,gemini,comfy,io,dataDir,blocked,interval:options.personaInterval??5*60_000});
   installPhotoAI(app,{auth,gemini});
   const stopStudio=installStudio(app,{db,auth,gemini,fetcher:options.studioFetch,hermes:options.hermes});
   installTranslation(app,{db,auth,blocked,gemini,fetcher:options.studioFetch});
@@ -257,7 +261,7 @@ export function createPureServer(options={}) {
     io.to(req.params.id).emit('friends');io.to(req.user.id).emit('friends');res.json({ok:true});
   });
   app.post('/api/block/:id',auth,(req,res)=>{run('INSERT OR IGNORE INTO blocks VALUES(?,?)',req.user.id,req.params.id);run('DELETE FROM friends WHERE a=? AND b=?',...pair(req.user.id,req.params.id));for(const [id,c] of calls)if([c.a,c.b].includes(req.user.id)&&[c.a,c.b].includes(req.params.id))endCall(id,'blocked');io.to(req.params.id).emit('friends');io.to(req.user.id).emit('friends');res.json({ok:true});});
-  const messageView=m=>{const avatar=m.sender&&m.sender!=='pure-ai'?one("SELECT updated FROM profile_media WHERE owner=? AND kind='avatar'",m.sender):null;return {...m,deleted:!!m.deleted,senderAvatar:avatar?'/api/profiles/'+encodeURIComponent(m.sender)+'/media/avatar?v='+avatar.updated:null,file:m.file_id?one('SELECT id,name,mime,size FROM files WHERE id=?',m.file_id):null,isAi:m.sender==='pure-ai',senderName:m.sender==='pure-ai'?'PURE AI ':m.sender_name||undefined};};
+  const messageView=m=>{const avatar=m.sender&&m.sender!=='pure-ai'?one("SELECT updated FROM profile_media WHERE owner=? AND kind='avatar'",m.sender):null;return {...m,deleted:!!m.deleted,senderAvatar:avatar?'/api/profiles/'+encodeURIComponent(m.sender)+'/media/avatar?v='+avatar.updated:null,file:m.file_id?one('SELECT id,name,mime,size FROM files WHERE id=?',m.file_id):null,isAi:m.sender==='pure-ai'||m.sender?.startsWith('ai-'),senderName:m.sender==='pure-ai'?'PURE AI ':m.sender_name||undefined};};
   function purgeUnreferencedFile(id){if(!id)return;const file=one('SELECT path FROM files WHERE id=?',id);if(!file||one('SELECT 1 FROM messages WHERE file_id=? UNION ALL SELECT 1 FROM group_messages WHERE file_id=? LIMIT 1',id,id))return;run('DELETE FROM files WHERE id=?',id);try{unlinkSync(join(dataDir,'uploads',file.path));}catch{}}
   async function triggerPureAi({peer,groupId,text,senderUser,beforeId}) {
     const match = text.match(/@pure\s*([\s\S]*)/i);
@@ -578,7 +582,6 @@ export function createPureServer(options={}) {
   });
   const tts=options.tts||createTts({dataDir,fetcher:options.ttsFetch});
   installTts(app,{tts,auth,adminOnly,limiter:rateLimit({windowMs:60_000,limit:120,standardHeaders:'draft-7',legacyHeaders:false}),studioLimiter:rateLimit({windowMs:60_000,limit:Number(process.env.STUDIO_RATE||20),standardHeaders:'draft-7',legacyHeaders:false,message:{error:'studio rate limited'}})});
-  const comfy=options.comfy||createComfy({dataDir,fetcher:options.comfyFetch});
   installComfy(app,{comfy,auth,adminOnly,limiter:rateLimit({windowMs:60_000,limit:Number(process.env.COMFY_RATE||10),standardHeaders:'draft-7',legacyHeaders:false,keyGenerator:req=>req.user.id,message:{error:'comfy rate limited'}})});
   if(typeof options.extendApp==='function')options.extendApp(app,{db,dataDir});
   // v0.9 in-app update + server discovery
@@ -596,7 +599,7 @@ export function createPureServer(options={}) {
     log.info('admin account ready from .env',{handle:h});})().catch(e=>log.error('admin bootstrap failed',{error:e.message}));
   let scanTimer;if(options.scan!==false){gemini.scan();scanTimer=setInterval(()=>gemini.scan(),86400000);scanTimer.unref();}
   const cleanTimer=setInterval(()=>run('DELETE FROM sessions WHERE expires<?',Date.now()),3600000);cleanTimer.unref();
-  return {app,http,io,db,log,adminReady,async close(){v09.close();stopStudio();stopSecretary();stopNearby();clearInterval(scanTimer);clearInterval(cleanTimer);for(const id of calls.keys())endCall(id,'shutdown');await new Promise(r=>io.close(r));db.close();}};
+  return {app,http,io,db,log,adminReady,async close(){personas.stop();v09.close();stopStudio();stopSecretary();stopNearby();clearInterval(scanTimer);clearInterval(cleanTimer);for(const id of calls.keys())endCall(id,'shutdown');await new Promise(r=>io.close(r));db.close();}};
 }
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
   for(const f of [join(root,'.env'),join(root,'server','.env')])try{process.loadEnvFile(f);}catch{}

@@ -16,8 +16,8 @@ android {
         ndk { abiFilters 'arm64-v8a', 'x86_64' }
         externalNativeBuild { cmake { arguments '-DCMAKE_BUILD_TYPE=Release', '-DANDROID_STL=c++_shared' ; cppFlags '-O3' } }
         targetSdk 35
-        versionCode 20
-        versionName '0.10.1'
+        versionCode 21
+        versionName '0.11.0'
         buildConfigField 'String', 'PURE_SERVER_URL', '"' + escapedServerUrl + '"'
     }
     buildFeatures { buildConfig true; compose true }

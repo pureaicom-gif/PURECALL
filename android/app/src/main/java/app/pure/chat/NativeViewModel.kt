@@ -241,6 +241,8 @@ class NativeViewModel(app: Application) : AndroidViewModel(app) {
                 p.opt("cover").let { if (it is JSONObject || (it is String && it.isNotEmpty())) "${a.origin}/api/profiles/$id/media/cover" else null }) }
         runCatching { a.get("/posts?owner=$id").optJSONArray("posts") }.getOrNull()?.let { arr -> profilePosts[id] = (0 until arr.length()).map { a.post(arr.getJSONObject(it)) } }
     }
+    fun saveStatus(s: String) = viewModelScope.launch { act { api!!.post("/account/status", JSONObject().put("status", s)); toast = "บันทึกสถานะแล้ว" }; me = me?.copy(statusText = s); me?.let { loadProfile(it.id) } }
+    fun uploadAvatar(jpeg: ByteArray) = viewModelScope.launch { act { api!!.uploadImage("/profile/media/avatar", jpeg); toast = "อัปเดตรูปโปรไฟล์แล้ว" }; me?.let { loadProfile(it.id); refreshFriends() } }
     fun saveBio(bio: String) = viewModelScope.launch {
         act { api!!.post("/profile", JSONObject().put("bio", bio)) }; me?.let { loadProfile(it.id) }
     }

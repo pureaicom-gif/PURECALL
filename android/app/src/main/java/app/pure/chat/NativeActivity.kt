@@ -80,7 +80,8 @@ class NativeActivity : ComponentActivity() {
                     Tab.Friends -> FriendsScreen(vm.chats, vm.searchResults, vm.suggestions, vm::search, { vm.addFriend(it) }, { u, a -> vm.respond(u, a) }, { vm.openChat(it) }, { openWeb("/?tab=friends") })
                     Tab.Timeline -> TimelineScreen(me, vm.reels, vm.posts, vm.feedLoading, { vm.createPost(it) }, { vm.like(it) }, { showStoryComposer = true }, { vm.openStory(it) }, { vm.openProfile(it) }, { openWeb("/?tab=reels") })
                     Tab.Profile -> { LaunchedEffect(me.id) { vm.loadProfile(me.id) }
-                        ProfileScreen(vm.profiles[me.id] ?: UiProfile(me), true, vm.profilePosts[me.id].orEmpty(), null, { vm.saveBio(it) }, {}, { vm.overlays.add(Overlay.Settings) }, { vm.like(it) }) }
+                        ProfileScreen(vm.profiles[me.id] ?: UiProfile(me), true, vm.profilePosts[me.id].orEmpty(), null, { vm.saveBio(it) }, {}, { vm.overlays.add(Overlay.Settings) }, { vm.like(it) }, { vm.saveStatus(it) },
+                            { pickPhoto.launch(androidx.activity.result.PickVisualMediaRequest(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly)) }, { takePhoto.launch(null) }) }
                     Tab.More -> MoreScreen(me, { openWebScreen(it) }, { vm.overlays.add(Overlay.Settings) })
                 }
             }
@@ -106,7 +107,10 @@ class NativeActivity : ComponentActivity() {
     }
 
     private fun enc(s: String) = URLEncoder.encode(s, "UTF-8")
-    private fun openWebScreen(w: WebScreen) = openWeb(if (w == WebScreen.Admin) "/admin" else if (w == WebScreen.FullWeb) "/" else "/?tab=" + w.web)
+    private fun openWebScreen(w: WebScreen) = openWeb(when (w) { WebScreen.Admin -> "/admin"; WebScreen.FullWeb -> "/"; WebScreen.Voice -> "/?voice=1"; WebScreen.Personas -> "/?personas=1"; else -> "/?tab=" + w.web })
+    private val pickPhoto = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) runCatching { contentResolver.openInputStream(uri)!!.use { android.graphics.BitmapFactory.decodeStream(it) } }.getOrNull()?.let { vm.uploadAvatar(AvatarCrop.squareJpeg(it)) } }
+    private val takePhoto = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.TakePicturePreview()) { bmp -> if (bmp != null) vm.uploadAvatar(AvatarCrop.squareJpeg(bmp)) }
 
     /** Hand the session to the WebView (cookie) and open a not-yet-native screen. */
     private fun openWeb(path: String) {

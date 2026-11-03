@@ -19,6 +19,7 @@ export function openDatabase(dir) {
   const userColumns=db.prepare('PRAGMA table_info(users)').all().map(c=>c.name);
   if(!userColumns.includes('role'))db.exec("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'user'");
   if(!userColumns.includes('banned'))db.exec("ALTER TABLE users ADD COLUMN banned INTEGER NOT NULL DEFAULT 0");
+  if(!userColumns.includes('status_text'))db.exec("ALTER TABLE users ADD COLUMN status_text TEXT NOT NULL DEFAULT ''");
   if(!userColumns.includes('bio'))db.exec("ALTER TABLE users ADD COLUMN bio TEXT NOT NULL DEFAULT ''");
   if(!userColumns.includes('profile_private'))db.exec("ALTER TABLE users ADD COLUMN profile_private INTEGER NOT NULL DEFAULT 0");
   if(!userColumns.includes('timeline_private'))db.exec("ALTER TABLE users ADD COLUMN timeline_private INTEGER NOT NULL DEFAULT 0");

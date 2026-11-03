@@ -1,4 +1,5 @@
-export function installAccountProfile(app,{db,auth}){
+export function installAccountProfile(app,{db,auth,io}){
+ app.post('/api/account/status',auth,(req,res)=>{const t=req.body?.status;if(typeof t!=='string'||t.length>80)return res.status(400).json({error:'สถานะไม่เกิน 80 ตัวอักษร'});const clean=t.replace(/[\u0000-\u001f]/g,' ').trim();db.prepare('UPDATE users SET status_text=? WHERE id=?').run(clean,req.user.id);io?.emit('friends');res.json({statusText:clean});});
  app.post('/api/account/profile',auth,(req,res)=>{
  const {name,handle}=req.body;if(typeof name!=='string'||!name.trim()||name.length>40)return res.status(400).json({error:'ชื่อ 1–40 ตัวอักษร'});
  const normalized=typeof handle==='string'?handle.toLowerCase():req.user.handle;

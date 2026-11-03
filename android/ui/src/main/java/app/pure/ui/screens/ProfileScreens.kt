@@ -29,8 +29,10 @@ import coil.compose.AsyncImage
 
 @Composable
 fun ProfileScreen(p: UiProfile?, isMe: Boolean, posts: List<UiPost>, onBack: (() -> Unit)?, onEditBio: (String) -> Unit,
-                  onMessage: () -> Unit, onSettings: () -> Unit, onLike: (UiPost) -> Unit) {
+                  onMessage: () -> Unit, onSettings: () -> Unit, onLike: (UiPost) -> Unit,
+                  onSaveStatus: (String) -> Unit = {}, onPickAvatar: (() -> Unit)? = null, onTakePhoto: (() -> Unit)? = null) {
     var editing by remember { mutableStateOf(false) }
+    var photoMenu by remember { mutableStateOf(false) }
     if (p == null) { Box(Modifier.fillMaxSize().background(Pure.Bg), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Pure.Accent) }; return }
     LazyColumn(Modifier.fillMaxSize().background(Pure.Bg), contentPadding = PaddingValues(bottom = Pure.s6)) {
         item {
@@ -41,14 +43,17 @@ fun ProfileScreen(p: UiProfile?, isMe: Boolean, posts: List<UiPost>, onBack: (()
                     if (onBack != null) RoundIcon(Icons.AutoMirrored.Rounded.ArrowBack, "กลับ", onBack)
                     Spacer(Modifier.weight(1f)); if (isMe) RoundIcon(Icons.Rounded.Settings, "ตั้งค่า", onSettings)
                 }
-                Box(Modifier.align(Alignment.BottomStart).padding(start = Pure.s4).clip(CircleShape).background(Pure.Bg).padding(4.dp)) { Avatar(p.user, 92.dp, showOnline = false) }
+                Box(Modifier.align(Alignment.BottomStart).padding(start = Pure.s4).clip(CircleShape).background(Pure.Bg).padding(4.dp)
+                    .then(if (isMe && onPickAvatar != null) Modifier.clickable { photoMenu = true } else Modifier)) { Avatar(p.user, 92.dp, showOnline = false)
+                    if (isMe && onPickAvatar != null) Box(Modifier.align(Alignment.BottomEnd).size(28.dp).clip(CircleShape).background(Pure.Accent), contentAlignment = Alignment.Center) { Icon(Icons.Rounded.PhotoCamera, "เปลี่ยนรูปโปรไฟล์", tint = Pure.Bg, modifier = Modifier.size(16.dp)) } }
             }
         }
         item {
             Column(Modifier.padding(horizontal = Pure.s4)) {
                 Spacer(Modifier.height(Pure.s2))
                 Text(p.user.name, style = MaterialTheme.typography.headlineSmall, color = Pure.Text)
-                Text("@${p.user.handle}" + if (p.user.isAdmin) " · แอดมิน" else "", color = Pure.Text3, style = MaterialTheme.typography.bodyMedium)
+                Text("@${p.user.handle}" + if (p.user.isAdmin) " · แอดมิน" else "" + if (p.user.ai) " · AI" else "", color = Pure.Text3, style = MaterialTheme.typography.bodyMedium)
+                if (p.user.statusText.isNotBlank()) Text(p.user.statusText, color = Pure.Accent2, style = MaterialTheme.typography.bodyMedium)
                 if (p.bio.isNotBlank()) { Spacer(Modifier.height(Pure.s2)); Text(p.bio, color = Pure.Text2, style = MaterialTheme.typography.bodyMedium) }
                 Spacer(Modifier.height(Pure.s4))
                 Row(Modifier.fillMaxWidth().clip(Pure.rLg).background(Pure.Surface).border(1.dp, Pure.Line, Pure.rLg).padding(vertical = Pure.s3)) {
@@ -65,12 +70,19 @@ fun ProfileScreen(p: UiProfile?, isMe: Boolean, posts: List<UiPost>, onBack: (()
     }
     if (editing) {
         var b by remember { mutableStateOf(p.bio) }
+        var st by remember { mutableStateOf(p.user.statusText) }
         AlertDialog({ editing = false }, containerColor = Pure.Surface2, title = { Text("แก้ไขแนะนำตัว") }, text = {
-            PureField(b, { if (it.length <= 240) b = it }, "เกี่ยวกับฉัน (ไม่เกิน 240 ตัว)", singleLine = false) },
-            confirmButton = { TextButton({ onEditBio(b.trim()); editing = false }) { Text("บันทึก", color = Pure.Accent2) } },
+            Column { PureField(st, { if (it.length <= 80) st = it }, "สถานะ (ไม่เกิน 80 ตัว)", placeholder = "เช่น กำลังทำงาน 💻"); Spacer(Modifier.height(Pure.s2))
+            PureField(b, { if (it.length <= 240) b = it }, "เกี่ยวกับฉัน (ไม่เกิน 240 ตัว)", singleLine = false) } },
+            confirmButton = { TextButton({ onEditBio(b.trim()); if (st.trim() != p.user.statusText) onSaveStatus(st.trim()); editing = false }) { Text("บันทึก", color = Pure.Accent2) } },
             dismissButton = { TextButton({ editing = false }) { Text("ยกเลิก", color = Pure.Text2) } })
     }
+    if (photoMenu) AlertDialog({ photoMenu = false }, containerColor = Pure.Surface2, title = { Text("รูปโปรไฟล์") },
+        text = { Text("ตัดเป็นสี่เหลี่ยมจัตุรัสตรงกลางอัตโนมัติ", color = Pure.Text2) },
+        confirmButton = { TextButton({ photoMenu = false; onPickAvatar?.invoke() }) { Text("เลือกจากคลัง", color = Pure.Accent2) } },
+        dismissButton = { TextButton({ photoMenu = false; onTakePhoto?.invoke() }) { Text("ถ่ายรูป", color = Pure.Accent2) } })
 }
+
 
 @Composable private fun RowScope.Stat(label: String, n: Int) {
     Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -141,7 +153,7 @@ fun MoreScreen(me: UiUser, onOpenWeb: (WebScreen) -> Unit, onSettings: () -> Uni
 }
 
 fun webIcon(w: WebScreen): ImageVector = when (w) { WebScreen.Pet -> Icons.Rounded.Pets; WebScreen.Market -> Icons.Rounded.Storefront
-    WebScreen.Studio -> Icons.Rounded.AutoAwesome; WebScreen.Admin -> Icons.Rounded.AdminPanelSettings; WebScreen.FullWeb -> Icons.Rounded.Language }
+    WebScreen.Studio -> Icons.Rounded.AutoAwesome; WebScreen.Admin -> Icons.Rounded.AdminPanelSettings; WebScreen.Voice -> Icons.Rounded.Mic; WebScreen.Personas -> Icons.Rounded.AutoAwesome; WebScreen.FullWeb -> Icons.Rounded.Language }
 
 @Composable
 fun IncomingCallOverlay(from: UiUser, video: Boolean, onAccept: () -> Unit, onDecline: () -> Unit) {
