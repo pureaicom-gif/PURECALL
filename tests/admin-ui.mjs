@@ -22,7 +22,7 @@ try{
 
   await page.goto(base+'/admin');
   assert.equal(await page.locator('link[rel="stylesheet"][href="/admin.css"]').count(),1);
-  assert.equal(await page.locator('body').evaluate(element=>getComputedStyle(element).backgroundColor),'rgb(11, 13, 17)');
+  assert.equal(await page.locator('body').evaluate(element=>getComputedStyle(element).backgroundColor),'rgb(0, 0, 0)');
   await page.locator('#login-handle').fill('admin_ui');
   await page.locator('#login-password').fill('admin-ui-pass-123');
   await page.locator('#login-btn').click();

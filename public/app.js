@@ -15,6 +15,7 @@ import {PET_SPECIES,speciesName} from './pet-catalog.js';
 import {createWorkspace} from './chat-workspace.js';
 import {mountNearby} from './nearby.js';
 import {mountMarketplace} from './marketplace.js';
+import {v09} from './v09.js';
 const newId=()=>crypto.randomUUID?.() || Array.from(crypto.getRandomValues(new Uint8Array(16)),x=>x.toString(16).padStart(2,'0')).join('');
 const $=s=>document.querySelector(s), esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const icon=n=>`<svg><use href="#${n}"/></svg>`;
@@ -39,7 +40,7 @@ $('#auth-form').onsubmit=async e=>{e.preventDefault();$('#auth-submit').disabled
 const workspace=createWorkspace({state,esc,icon,renderConversations,toast});
 const translator=setupTranslation({api,state});
 const queuePanel=document.createElement('section');queuePanel.id='outbox-panel';queuePanel.hidden=true;$('#composer').before(queuePanel);
-const outbox=createOutbox({id:newId,online:()=>navigator.onLine&&!!socket?.connected,changed:renderOutbox,send:async item=>{const owner=state.user?.id;const d=await api(item.group?'/groups/'+item.target+'/messages':'/messages/'+item.target,{text:item.text,clientId:item.clientId});if(state.user?.id!==owner)return;if((item.group?state.group?.id:state.peer?.id)===item.target&&!state.messages.some(m=>m.id===d.message.id)){state.messages.push(d.message);renderMessages();}}});
+const outbox=createOutbox({id:newId,online:()=>navigator.onLine&&!!socket?.connected,changed:renderOutbox,send:async item=>{const owner=state.user?.id;const d=await api(item.group?'/groups/'+item.target+'/messages':'/messages/'+item.target,{text:item.group?item.text:await v09.encryptOutgoing(item.target,item.text),clientId:item.clientId});if(state.user?.id!==owner)return;if((item.group?state.group?.id:state.peer?.id)===item.target&&!state.messages.some(m=>m.id===d.message.id)){state.messages.push(d.message);renderMessages();}}});
 function renderOutbox(){const rows=outbox.list().filter(x=>x.target===(state.group?.id||state.peer?.id)&&x.group===!!state.group);queuePanel.hidden=!rows.length;queuePanel.innerHTML=rows.map(x=>'<div class="outbox-row"><span>'+esc(x.text)+'</span><small>'+esc(x.error||'รอส่ง · ส่งอัตโนมัติเมื่อเชื่อมต่อ')+'</small>'+(x.error?'<button type="button" data-retry="'+esc(x.clientId)+'">ลองใหม่</button>':'')+'<button type="button" data-cancel="'+esc(x.clientId)+'">นำออกจากคิว</button></div>').join('');}
 queuePanel.onclick=e=>{const b=e.target.closest('button');if(!b)return;if(b.dataset.retry)outbox.retry(b.dataset.retry);if(b.dataset.cancel)outbox.remove(b.dataset.cancel);};
 window.addEventListener('online',()=>outbox.flush());
@@ -50,9 +51,9 @@ async function refreshGroups(){try{const data=await api('/groups');state.groups=
 async function enter(user){
   state.user=user;setupLocalization(user);outbox.login(user.id);soundAccount(user.id);workspace.login();$('#auth').hidden=true;$('#app').hidden=false;$('#my-avatar').textContent=initial(user);
   try{if('Notification' in window&&Notification.permission==='default')Notification.requestPermission().catch(()=>{});}catch(e){}
-  socket?.disconnect();socket=io();
+  socket?.disconnect();socket=io({reconnectionDelayMax:8000});v09.attach(socket,user);
   socket.on('connect',safe(async()=>{$('#connection-dot').classList.add('connected');outbox.flush();$('#connection-label').textContent='เชื่อมต่อแล้ว';await refreshFriends();await refreshGroups();if(state.peer)await openChat(state.peer);else if(state.group)await openGroup(state.group);checkUrlParams();}));
-  socket.on('disconnect',()=>{$('#connection-dot').classList.remove('connected');$('#connection-label').textContent='ขาดการเชื่อมต่อ • กำลังลองใหม่';if(call)finishCall();});
+  socket.on('disconnect',()=>{$('#connection-dot').classList.remove('connected');$('#connection-label').textContent='ขาดการเชื่อมต่อ • กำลังลองใหม่';if(call&&call.pc?.connectionState!=='connected')finishCall();});
   socket.on('connect_error',()=>{$('#connection-label').textContent='เชื่อมต่อไม่ได้ • ตรวจเซิร์ฟเวอร์/บัญชี';});
   socket.on('friends',safe(async()=>{const prior=new Set(state.friends.filter(f=>f.status==='pending'&&f.incoming).map(f=>f.id));await refreshFriends();for(const f of state.friends.filter(f=>f.status==='pending'&&f.incoming&&!prior.has(f.id))){playSound('message').catch(()=>{});toast('คำขอเป็นเพื่อนใหม่จาก '+f.name);}if(state.peer&&!state.friends.some(f=>f.id===state.peer.id&&f.status==='accepted')){state.peer=null;$('#conversation').hidden=true;$('#chat-empty').hidden=false;$('#app').classList.remove('chat-open');}}));
   socket.on('group:created',safe(async g=>{await refreshGroups();toast('เข้าร่วมกลุ่ม: '+g.name);}));
@@ -105,7 +106,7 @@ function renderConversations(){
   }
   const list=state.friends.filter(f=>f.status==='accepted'&&workspace.matches(f)&&(f.name.toLowerCase().includes(q)||f.handle.includes(q))).sort((a,b)=>(b.last?.created||0)-(a.last?.created||0));
   $('#friend-count').textContent=list.length;
-  $('#conversations').innerHTML=list.length?list.map(f=>`<button class="friend-row ${state.peer?.id===f.id?'selected':''}" data-peer="${esc(f.id)}"><span class="avatar">${esc(initial(f))}</span><span class="row-content"><strong>${esc(f.name)}</strong><p>${esc(f.last?(f.last.sender===state.user.id?'คุณ: ':f.last.sender==='pure-ai'?' PURE AI: ':'')+(f.last.file_id?'ส่งไฟล์แนบ':f.last.text):'เริ่มบทสนทนาใหม่กัน')}</p></span><span class="row-meta"><span>${f.last?time(f.last.created):f.online?'ออนไลน์':''}</span>${f.unread?`<b class="badge">${f.unread}</b>`:''}</span></button>`).join(''):`<div class="empty-list">${q?'ไม่พบบทสนทนา':'ยังไม่มีบทสนทนา<br>เพิ่มเพื่อนด้วย PURE ID เพื่อเริ่มคุย'}</div>`;
+  $('#conversations').innerHTML=list.length?list.map(f=>`<button class="friend-row ${state.peer?.id===f.id?'selected':''}" data-peer="${esc(f.id)}"><span class="avatar">${esc(initial(f))}</span><span class="row-content"><strong>${esc(f.name)}</strong><p>${esc(f.last?(f.last.sender===state.user.id?'คุณ: ':f.last.sender==='pure-ai'?' PURE AI: ':'')+(f.last.file_id?'ส่งไฟล์แนบ':String(f.last.text||'').startsWith('e2e1:')?'🔒 ข้อความเข้ารหัส':f.last.text):'เริ่มบทสนทนาใหม่กัน')}</p></span><span class="row-meta"><span>${f.last?time(f.last.created):f.online?'ออนไลน์':''}</span>${f.unread?`<b class="badge">${f.unread}</b>`:''}</span></button>`).join(''):`<div class="empty-list">${q?'ไม่พบบทสนทนา':'ยังไม่มีบทสนทนา<br>เพิ่มเพื่อนด้วย PURE ID เพื่อเริ่มคุย'}</div>`;
 }
 
 $('#chat-search').oninput=renderConversations;
@@ -128,7 +129,7 @@ document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>tab(b.dataset.t
 function peerHeader(){
   if(state.group){
     $('#peer-name').textContent=state.group.name;$('#peer-avatar').textContent='';$('#peer-status').textContent='สมาชิก '+state.group.member_count+' คน • มี PURE AI คอยช่วย';
-    $('#voice-call').hidden=true;$('#video-call').hidden=true;$('#visit-peer').hidden=true;
+    $('#voice-call').hidden=false;$('#video-call').hidden=false;$('#visit-peer').hidden=true;
     $('#group-manage').hidden=!['owner','admin'].includes(state.group.role);
     return;
   }
@@ -186,6 +187,7 @@ function renderMessages(scroll=true){
       const d=await api('/groups/'+state.group.id+'/messages?before='+state.messages[0].id);if(!d.messages.length){$('#load-older').remove();return;}state.messages=[...d.messages,...state.messages];renderMessages(false);box.scrollTop+=box.scrollHeight-h;
     }
   }));
+  v09.afterRender($('#messages'));
 }
 
 function showTyping(label){const host=$('#typing');if(!host)return;host.replaceChildren();if(!label)return;const text=document.createElement('span');text.textContent=label;const dots=document.createElement('span');dots.className='typing-dots';dots.setAttribute('aria-hidden','true');for(let i=0;i<3;i++)dots.append(document.createElement('i'));host.append(text,dots);}
@@ -416,7 +418,7 @@ $('#btn-do-add-friend').onclick=safe(async()=>{
 
 function checkUrlParams(){
   try{
-    const p=new URLSearchParams(location.search);
+    const p=new URLSearchParams(location.search);v09.urlParams(p);
     if(p.has('add')){
       const handle=p.get('add');
       checkAndConfirmFriend(handle);
@@ -494,14 +496,14 @@ $('#ai-use').onclick=()=>{$('#message-input').value=$('#ai-result').textContent;
 
 function callUI(peer,inbound,video){$('#call-name').textContent=peer.name;$('#call-avatar').textContent=initial(peer);$('#call-status').textContent=inbound?'สายเรียกเข้า':'กำลังโทร…';$('#accept-call').hidden=!inbound;$('#mute-call').hidden=inbound;$('#camera-call').hidden=inbound||!video;$('#speaker-call').hidden=false;setupCallAudio(video,toast);$('.call-person').hidden=false;$('#local-video').hidden=!video;$('#mute-call').classList.remove('off');$('#camera-call').classList.remove('off');if(!$('#call-dialog').open)$('#call-dialog').showModal();}
 async function media(video){if(!navigator.mediaDevices?.getUserMedia)throw new Error('โทรต้องใช้ HTTPS หรือ localhost และอนุญาตกล้อง/ไมค์');return navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true},video:video?{facingMode:'user',width:640,height:480}:false});}
-async function setupPC(ctx){setupCallAudio(ctx.video,toast);const rtc=await api('/rtc');if(call!==ctx)return;ctx.pc=new RTCPeerConnection({iceServers:rtc.iceServers});ctx.stream.getTracks().forEach(t=>ctx.pc.addTrack(t,ctx.stream));$('#local-video').srcObject=ctx.stream;ctx.pc.onicecandidate=e=>{if(e.candidate&&ctx.id)socket.emit('call:signal',{id:ctx.id,signal:{candidate:e.candidate}});};ctx.pc.ontrack=e=>{$('#remote-video').srcObject=e.streams[0];$('#remote-video').play().catch(()=>{});if(e.track.kind==='video')$('.call-person').hidden=true;};ctx.pc.onconnectionstatechange=()=>{if(call!==ctx)return;const status=ctx.pc.connectionState;$('#call-status').textContent=status==='connected'?'เชื่อมต่อแล้ว':status==='disconnected'?'สัญญาณขาด…':'กำลังเชื่อมต่อ…';if(status==='failed'){toast('เชื่อมต่อสายไม่ได้ ตรวจสอบ TURN และเครือข่าย');endCall();}};if(!rtc.turnConfigured)toast('ยังไม่มี TURN การโทรข้ามเครือข่ายบางชนิดอาจไม่สำเร็จ');}
+async function setupPC(ctx){setupCallAudio(ctx.video,toast);const rtc=await api('/rtc');if(call!==ctx)return;ctx.pc=new RTCPeerConnection({iceServers:rtc.iceServers});ctx.stream.getTracks().forEach(t=>ctx.pc.addTrack(t,ctx.stream));$('#local-video').srcObject=ctx.stream;ctx.pc.onicecandidate=e=>{if(e.candidate&&ctx.id)socket.emit('call:signal',{id:ctx.id,signal:{candidate:e.candidate}});};ctx.pc.ontrack=e=>{$('#remote-video').srcObject=e.streams[0];$('#remote-video').play().catch(()=>{});if(e.track.kind==='video')$('.call-person').hidden=true;};v09.onPeerConnection(ctx);ctx.pc.onconnectionstatechange=()=>{if(call!==ctx)return;const status=ctx.pc.connectionState;if(status==='disconnected'&&!ctx.incoming)v09.iceRestart(ctx);$('#call-status').textContent=status==='connected'?'เชื่อมต่อแล้ว':status==='disconnected'?'สัญญาณขาด…':'กำลังเชื่อมต่อ…';if(status==='failed'&&!ctx.restarted&&!ctx.incoming){ctx.restarted=true;v09.iceRestart(ctx);return;}if(status==='failed'){toast('เชื่อมต่อสายไม่ได้ ตรวจสอบ TURN และเครือข่าย');endCall();}};if(!rtc.turnConfigured)toast('ยังไม่มี TURN การโทรข้ามเครือข่ายบางชนิดอาจไม่สำเร็จ');}
 async function startCall(video){if(call||secretaryActive()||!state.peer)return;const ctx={peer:state.peer,id:null,video,queued:[]};call=ctx;callUI(ctx.peer,false,video);try{ctx.stream=await media(video);if(call!==ctx){ctx.stream.getTracks().forEach(t=>t.stop());return;}await setupPC(ctx);if(call!==ctx)return;const result=await socket.timeout(10000).emitWithAck('call:start',{peer:ctx.peer.id,video});if(call!==ctx){if(result.id)socket.emit('call:end',{id:result.id});return;}if(result.error)throw new Error(result.error);ctx.id=result.id;}catch(e){if(call===ctx)endCall();toast(e.message);}}
-function incoming(data){if(call||secretaryActive()){socket.emit('call:end',{id:data.id});return;}call={id:data.id,peer:data.from,video:data.video,queued:[],incoming:true};startRingtone();callUI(data.from,true,data.video);}
-$('#voice-call').onclick=()=>startCall(false);$('#video-call').onclick=()=>startCall(true);
+function incoming(data){if(call?.id===data.id)return;if(call||secretaryActive()||v09.inGroupCall()){socket.emit('call:end',{id:data.id});return;}call={id:data.id,peer:data.from,video:data.video,queued:[],incoming:true};startRingtone();callUI(data.from,true,data.video);}
+$('#voice-call').onclick=()=>state.group?v09.groupCall(state.group.id,false):startCall(false);$('#video-call').onclick=()=>state.group?v09.groupCall(state.group.id,true):startCall(true);
 $('#accept-call').onclick=async()=>{const ctx=call;if(!ctx)return;$('#accept-call').disabled=true;try{ctx.stream=await media(ctx.video);if(call!==ctx){ctx.stream.getTracks().forEach(t=>t.stop());return;}await setupPC(ctx);if(call!==ctx)return;$('#accept-call').hidden=true;$('#mute-call').hidden=false;$('#camera-call').hidden=!ctx.video;$('#speaker-call').hidden=false;setupCallAudio(ctx.video,toast);$('#call-status').textContent='กำลังเชื่อมต่อ…';socket.emit('call:accept',{id:ctx.id});}catch(e){toast(e.message);endCall();}finally{$('#accept-call').disabled=false;}};
 async function onAccepted({id}){const ctx=call;if(ctx?.id!==id||!ctx.pc)return;try{const offer=await ctx.pc.createOffer();await ctx.pc.setLocalDescription(offer);socket.emit('call:signal',{id,signal:{description:ctx.pc.localDescription}});}catch(e){toast(e.message);endCall();}}
 async function onSignal({id,signal}){const ctx=call;if(ctx?.id!==id||!ctx.pc)return;if(signal.description){await ctx.pc.setRemoteDescription(signal.description);for(const candidate of ctx.queued)await ctx.pc.addIceCandidate(candidate);ctx.queued=[];if(signal.description.type==='offer'){const answer=await ctx.pc.createAnswer();await ctx.pc.setLocalDescription(answer);socket.emit('call:signal',{id,signal:{description:ctx.pc.localDescription}});}}else if(signal.candidate){if(ctx.pc.remoteDescription)await ctx.pc.addIceCandidate(signal.candidate);else ctx.queued.push(signal.candidate);}}
-function finishCall(){stopRingtone();resetCallAudio();if(!call)return;const ctx=call;call=null;ctx.stream?.getTracks().forEach(t=>t.stop());ctx.pc?.close();$('#remote-video').srcObject=null;$('#local-video').srcObject=null;$('#call-dialog').close();}
+function finishCall(){stopRingtone();resetCallAudio();if(!call)return;const ctx=call;call=null;v09.onCallEnd(ctx);ctx.stream?.getTracks().forEach(t=>t.stop());ctx.pc?.close();$('#remote-video').srcObject=null;$('#local-video').srcObject=null;$('#call-dialog').close();}
 function endCall(){if(call?.id)socket.emit('call:end',{id:call.id});finishCall();}
 $('#end-call').onclick=endCall;$('#call-dialog').addEventListener('cancel',e=>{e.preventDefault();endCall();});$('#mute-call').onclick=()=>{const t=call?.stream?.getAudioTracks()[0];if(t){t.enabled=!t.enabled;$('#mute-call').classList.toggle('off',!t.enabled);$('#mute-call').setAttribute('aria-label',t.enabled?'ปิดไมค์':'เปิดไมค์');}};$('#camera-call').onclick=()=>{const t=call?.stream?.getVideoTracks()[0];if(t){t.enabled=!t.enabled;$('#camera-call').classList.toggle('off',!t.enabled);}};
 const bootStartedAt=performance.now();
@@ -539,3 +541,5 @@ window.addEventListener('pure-call-user',safe(async e=>{
 const secretaryButton=document.createElement('button');secretaryButton.className='assistant-shortcut';secretaryButton.id='secretary-open';secretaryButton.innerHTML=icon('mic')+'<span><strong>เลขา AI</strong><small>โทรคุยสด · ความจำส่วนตัว</small></span>';document.querySelector('#pet-shortcut').before(secretaryButton);secretaryButton.onclick=()=>openSecretary({api,socket,toast,isCalling:()=>!!call});
 
 import './pure-icons.js';
+
+v09.init({state,api,toast,esc,icon,safe,initial,getCall:()=>call,getSocket:()=>socket,openChat,renderMessages,peerHeader,friendById:id=>state.friends.find(f=>f.id===id)});
