@@ -24,6 +24,7 @@ function setup() {
       m.onclick = () => { menu.classList.remove('open'); b.click(); };
       menu.appendChild(m);
     }
+    if (window.PureOpenPrefs) addItem(menu, 'ตั้งค่า · ภาษา', () => window.PureOpenPrefs());
     const A = window.PureAndroid;
     if (A?.openScanner) addItem(menu, 'สแกน QR', () => A.openScanner());
     if (A?.nativeMenu) addItem(menu, 'ตั้งค่าแอป', () => A.nativeMenu());
