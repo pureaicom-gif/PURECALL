@@ -32,19 +32,14 @@ export function validateGuide(body) {
   return { question: q, lang, history };
 }
 
-export function installWebGuide(app, { gemini, limit = Number(process.env.WEB_GUIDE_RATE || 10), getTts }) {
+export function installWebGuide(app, { gemini, limit = Number(process.env.WEB_GUIDE_RATE || 10) }) {
   const limiter = rateLimit({ windowMs: 60_000, limit, standardHeaders: 'draft-7', legacyHeaders: false, message: { error: 'rate limited' } });
   app.options('/api/web-guide', (req, res) => (cors(req, res) ? res.status(204).end() : res.status(403).end()));
   const ttsLimiter = rateLimit({ windowMs: 60_000, limit: Math.max(2, Math.floor(limit / 2)), standardHeaders: 'draft-7', legacyHeaders: false, message: { error: 'rate limited', fallback: 'device' } });
   app.options('/api/web-guide/tts', (req, res) => (cors(req, res) ? res.status(204).end() : res.status(403).end()));
   // read-aloud for guide answers: preset voice only, short text, falls back to the browser's speechSynthesis
-  app.post('/api/web-guide/tts', ttsLimiter, async (req, res) => {
-    if (!cors(req, res)) return res.status(403).json({ error: 'origin not allowed' });
-    const text = typeof req.body?.text === 'string' ? req.body.text.trim() : '';
-    if (!text || text.length > 600) return res.status(400).json({ error: 'text 1-600 chars', fallback: 'device' });
-    try { const out = await getTts().speak(text); res.set({ 'Content-Type': 'audio/wav', 'X-TTS-Cache': out.cached ? 'hit' : 'miss' }).send(out.audio); }
-    catch (e) { res.status(e.status || 503).json({ error: 'tts unavailable', fallback: 'device' }); }
-  });
+  // Drama3 is admin-only (Voice Studio); the public guide reads aloud with the visitor's own device/browser voice.
+  app.post('/api/web-guide/tts', ttsLimiter, (req, res) => { if (!cors(req, res)) return res.status(403).json({ error: 'origin' }); res.status(410).json({ error: 'server voice disabled', fallback: 'device' }); });
   app.post('/api/web-guide', limiter, async (req, res) => {
     if (!cors(req, res)) return res.status(403).json({ error: 'origin not allowed' });
     const v = validateGuide(req.body); if (v.error) return res.status(400).json({ error: v.error });

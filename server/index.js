@@ -63,13 +63,13 @@ export function createPureServer(options={}) {
     res.download(join(dir,pick),pick.replace('-debug',''));
   });
   app.use('/api',rateLimit({windowMs:60000,limit:240,standardHeaders:true,legacyHeaders:false}));
-  installWebGuide(app,{gemini,limit:options.webGuideLimit,getTts:()=>tts}); // own CORS allow-list; mounted before the same-origin guard
+  installWebGuide(app,{gemini,limit:options.webGuideLimit}); // own CORS allow-list; mounted before the same-origin guard
   app.use('/api',(req,res,next)=>originAllowed(req)?next():res.status(403).json({error:'Origin ไม่ถูกต้อง'}));
   const one=(sql,...args)=>db.prepare(sql).get(...args), all=(sql,...args)=>db.prepare(sql).all(...args), run=(sql,...args)=>db.prepare(sql).run(...args);
   function userOf(req) {
     const token=(req.headers.cookie||'').split(';').map(s=>s.trim()).find(s=>s.startsWith('pure_session='))?.slice(13);
     if(!token) return null;
-    return one('SELECT u.id,u.handle,u.name,u.role,s.expires FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token=? AND s.expires>?',hash(token),Date.now());
+    return one('SELECT u.id,u.handle,u.name,u.role,s.expires FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token=? AND s.expires>? AND u.banned=0',hash(token),Date.now());
   }
   function auth(req,res,next) {req.user=userOf(req); if(!req.user)return res.status(401).json({error:'กรุณาเข้าสู่ระบบ'}); next();}
   function adminOnly(req,res,next) {if(req.user?.role!=='admin')return res.status(403).json({error:'สำหรับผู้ดูแลระบบ (Admin) เท่านั้น'}); next();}
@@ -103,6 +103,7 @@ export function createPureServer(options={}) {
     const [salt,key]=(u?.password||'invalid:'+ '0'.repeat(128)).split(':');
     const derived=await scrypt(password,salt,64);
     if(!u||!timingSafeEqual(Buffer.from(key,'hex'),derived))return res.status(401).json({error:'ID หรือรหัสผ่านไม่ถูกต้อง'});
+    if(u.banned)return res.status(403).json({error:'บัญชีนี้ถูกระงับโดยผู้ดูแลระบบ'});
     session(res,u.id);res.json({user:pub(u)});
   });
   app.post('/api/logout',auth,(req,res)=>{run('DELETE FROM sessions WHERE user_id=?',req.user.id);io.in(req.user.id).disconnectSockets(true);res.clearCookie('pure_session',{path:'/'});res.json({ok:true});});
@@ -162,11 +163,11 @@ export function createPureServer(options={}) {
     const msgCount=one('SELECT COUNT(*) as n FROM messages').n;
     const fileCount=one('SELECT COUNT(*) as n FROM files').n;
     const petCount=one('SELECT COUNT(*) as n FROM pets').n;
-    const userList=all('SELECT id,handle,name,role,created FROM users ORDER BY created DESC LIMIT 50');
+    const userList=all('SELECT id,handle,name,role,created,banned FROM users ORDER BY created DESC LIMIT 50');
     res.json({
       ok:true,
       stats:{users:userCount,messages:msgCount,files:fileCount,pets:petCount,online:online.size},
-      users:userList.map(u=>({...pub(u),created:u.created})),
+      users:userList.map(u=>({...pub(u),created:u.created,banned:!!u.banned})),
       server:{uptime:Math.round(process.uptime()),memory:Math.round(process.memoryUsage().rss/1024/1024),node:process.version,platform:process.platform,model:gemini.status().model||'ยังไม่กำหนด'},
       network:getNetworkInfo(),
       ai:gemini.status()
@@ -184,6 +185,20 @@ export function createPureServer(options={}) {
     if(req.params.id===req.user.id&&role!=='admin')return res.status(400).json({error:'ไม่สามารถปลดสิทธิ์แอดมินของตัวเองได้'});
     run('UPDATE users SET role=? WHERE id=?',role,req.params.id);
     res.json({ok:true,role});
+  });
+  app.post('/api/admin/users/:id/ban',auth,adminOnly,(req,res)=>{
+    const banned=req.body?.banned!==false;if(req.params.id===req.user.id||req.params.id==='pure-ai')return res.status(400).json({error:'ไม่สามารถแบนบัญชีนี้ได้'});
+    if(!one('SELECT id FROM users WHERE id=?',req.params.id))return res.status(404).json({error:'ไม่พบผู้ใช้งาน'});
+    run('UPDATE users SET banned=? WHERE id=?',banned?1:0,req.params.id);if(banned){run('DELETE FROM sessions WHERE user_id=?',req.params.id);io.in(req.params.id).disconnectSockets(true);}
+    res.json({ok:true,banned});
+  });
+  app.get('/api/admin/system',auth,adminOnly,(req,res)=>{
+    const rd=f=>{try{return JSON.parse(readFileSync(join(dataDir,f),'utf8'));}catch{return null;}};
+    let pets=[];try{pets=readdirSync(join(root,'public','pets')).filter(f=>f.endsWith('.webm'));}catch{}
+    res.set('Cache-Control','no-store').json({version:'0.9.0',release:rd('version.json'),server:rd('server.json'),
+      cluster:options.cluster?.status?.()||{enabled:false,node:process.env.PURE_NODE_ID||'single',role:'primary'},
+      tts:tts.stats(),pets:{videos:pets,count:one('SELECT COUNT(*) n FROM pets').n},banned:one('SELECT COUNT(*) n FROM users WHERE banned=1').n,
+      ads:{managedIn:'purefxaidev/purecall-web ads.js'},uptime:Math.round(process.uptime()),memoryMb:Math.round(process.memoryUsage().rss/1048576),node:process.version});
   });
   app.post('/api/admin/users/:id/password',auth,adminOnly,async(req,res)=>{
     const {newPassword}=req.body||{};
@@ -561,8 +576,7 @@ export function createPureServer(options={}) {
     socket.on('disconnect',()=>{const n=(online.get(u.id)||1)-1;if(n)online.set(u.id,n);else{online.delete(u.id);presence(u.id);for(const [id,c]of calls)if([c.a,c.b].includes(u.id))endCall(id,'disconnected');}});
   });
   const tts=options.tts||createTts({dataDir,fetcher:options.ttsFetch});
-  if(!options.tts&&process.env.DRAMA3_PREWARM!=='0'&&process.env.NODE_ENV!=='test'&&!process.env.NODE_TEST_CONTEXT&&options.prewarm!==false)setTimeout(()=>tts.health().then(ok=>ok&&tts.prewarm()).catch(()=>{}),15000).unref?.();
-  installTts(app,{tts,auth,adminOnly,limiter:rateLimit({windowMs:60_000,limit:120,standardHeaders:'draft-7',legacyHeaders:false})});
+  installTts(app,{tts,auth,adminOnly,limiter:rateLimit({windowMs:60_000,limit:120,standardHeaders:'draft-7',legacyHeaders:false}),studioLimiter:rateLimit({windowMs:60_000,limit:Number(process.env.STUDIO_RATE||20),standardHeaders:'draft-7',legacyHeaders:false,message:{error:'studio rate limited'}})});
   if(typeof options.extendApp==='function')options.extendApp(app,{db,dataDir});
   // v0.9 in-app update + server discovery
   app.get('/api/app-config',(_,res)=>res.json({updateManifestUrl:process.env.UPDATE_MANIFEST_URL||'https://call.purefxai.store/version.json',githubReleaseApi:process.env.UPDATE_GITHUB_RELEASE_API||'https://api.github.com/repos/purefxaidev/purecall-web/releases/latest',serverJsonUrl:process.env.SERVER_JSON_URL||'https://call.purefxai.store/server.json',checkIntervalHours:6}));
