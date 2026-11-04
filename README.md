@@ -1,142 +1,162 @@
-# PURE 0.8.0
+# PURE 0.12.0
 
-## GitHub build and Android download
+**Chat, calls, community, and AI — your people, closer.**
 
-Push this project to a GitHub repository. The `PURE checks and Android APK` workflow runs the Node tests, checks the Docker image, and builds a debug APK. Download the APK from the workflow run's **Artifacts** section.
+**แชต โทร กลุ่ม และ AI — เชื่อมต่อคนที่คุณใส่ใจ**
 
-Pushing a version tag such as `v0.8.0` also creates a GitHub Release with a downloadable `PURE-0.8.0.apk` installer.
+| | English | ไทย |
+|---|---|---|
+| Web | [PURE web app](http://call.purefxai.store) *(HTTPS certificate is being fixed; do not bypass the browser warning.)* | [เปิด PURE บนเว็บ](http://call.purefxai.store) *(กำลังแก้ใบรับรอง HTTPS โปรดอย่ากดข้ามคำเตือนของเบราว์เซอร์)* |
+| Android | [Download PURE 0.12.0 APK](https://github.com/pureaicom-gif/PURECALL/releases/download/v0.12.0/PURE-0.12.0.apk) | [ดาวน์โหลด PURE 0.12.0 APK](https://github.com/pureaicom-gif/PURECALL/releases/download/v0.12.0/PURE-0.12.0.apk) |
+| Release notes | [v0.12.0 release](https://github.com/pureaicom-gif/PURECALL/releases/tag/v0.12.0) | [รายละเอียดรุ่น 0.12.0](https://github.com/pureaicom-gif/PURECALL/releases/tag/v0.12.0) |
 
-To prefill the server address in the APK, add a repository variable named `PURE_SERVER_URL` with the public HTTPS server URL. Without it, the app asks the user for the server address. GitHub Pages alone cannot host PURE's API, SQLite data, realtime sockets, or uploaded files.
+> **Security / ความปลอดภัย:** `call.purefxai.store` currently presents a certificate for `*.github.io`, not for `call.purefxai.store`. The page may load over HTTP, but sign-in, calls, camera, and microphone require correctly configured HTTPS. The web app is served separately from the PURE API server.
+>
+> ขณะนี้ใบรับรองของ `call.purefxai.store` ไม่ตรงกับโดเมน หน้าเว็บอาจเปิดผ่าน HTTP ได้ แต่การเข้าสู่ระบบ การโทร กล้อง และไมโครโฟนต้องใช้ HTTPS ที่ตั้งค่าใบรับรองถูกต้อง เว็บแอปและ API ของ PURE เป็นคนละส่วนกัน
 
-The `Deploy PURE server` workflow builds and publishes a Docker image to GitHub Container Registry (GHCR); configure `PURE_DOMAIN`, `PUBLIC_ORIGIN`, secure cookies, and any AI/TURN secrets on the server before starting the container. The live download button on PURE's sign-in page serves the checked-in debug APK at `/download/pure.apk`; replace it whenever publishing a newer APK.
+## What is PURE? / PURE คืออะไร
 
-แอป Android โทนดำขาว: แชต เพื่อน ส่งไฟล์ โทร WebRTC เกมสัตว์เลี้ยง 2D (16 สายพันธุ์ + ทักทายเสียง/ท่าทาง) และ Gemini แบบเลือกใช้
-พร้อมข้อความออฟไลน์ผ่าน Wi-Fi/ฮอตสปอต หรือ Bluetooth สำหรับมือถือที่ติดตั้ง PURE เหมือนกัน และรันออนไลน์ได้ทันทีผ่าน Cloudflare Tunnel
+PURE is a social messaging app with a responsive web client and an Android app. The current codebase includes direct and group conversations, profile and timeline features, media sharing, reactions and threaded replies, automatic message translation, AI assistance, and an optional 2D virtual pet. Calls use WebRTC and need a secure, reachable server configuration.
 
-## รุ่นนี้เพิ่มอะไร
+PURE เป็นแอปสื่อสารที่ใช้ได้บนเว็บและ Android โค้ดปัจจุบันมีแชตส่วนตัวและกลุ่ม โปรไฟล์ ไทม์ไลน์ การส่งสื่อ อารมณ์และตอบกลับคอมเมนต์ การแปลข้อความอัตโนมัติ ผู้ช่วย AI และสัตว์เลี้ยง 2D เสริม ระบบโทรใช้ WebRTC และต้องตั้งค่าเซิร์ฟเวอร์ที่เข้าถึงได้ผ่านการเชื่อมต่อปลอดภัย
 
-รุ่น 0.8.0 เพิ่มกราฟิกและไทม์ไลน์ตัวอย่างที่ทดลองใช้งานได้ แปลข้อความอัตโนมัติ 8 ภาษา และคิวข้อความเมื่อเน็ตหลุด ดู [รายละเอียด 0.8.0](docs/UPDATE-0.8.md)
+## 0.12.0 / รุ่น 0.12.0
 
+- Versioned Android debug APK (`versionCode 22`) and GitHub Release download.
+- Automatic version-named APK creation in the tagged-release workflow.
+- Server-side ComfyUI video-generation job flow using the owner's local workflow; generated video is added to the owner's timeline after completion and consent.
+- More reliable TTS fallback when a streaming backend does not support streaming.
+- Updated PURE launcher icon and web app branding.
 
-- PURE Photo Studio: ปรับแสง สี คอนทราสต์ โทนขาวดำ และหมุนรูปก่อนส่งในแชตส่วนตัว/กลุ่ม ทำบนเครื่อง ไม่ส่งภาพไป AI อัตโนมัติ
-- ปุ่ม Gemini ปรับภาพเป็นตัวเลือก ส่งภาพให้ Google เมื่อกดเท่านั้น ต้องเปิดสิทธิ์และมีโควตาโมเดลภาพ ตรวจภาพก่อนยืนยันส่ง
-- สติกเกอร์วาด SVG สำหรับ PURE 10 แบบ เลือกตัวอย่างก่อนส่ง รองรับแชตกลุ่มและการลองส่งใหม่
-- ไทม์ไลน์ รูปภาพ Reels ค้นหาโพสต์ แก้ข้อความ ลบความคิดเห็น Bio และ PURE AI ชวนคุยที่แสดงตัวว่าเป็น AI
-- เลขา AI โทรเสียงผ่าน Gemini Live มีบันทึกแยกบัญชี เลือกไม่จำและล้างความทรงจำได้
-- จำการเข้าสู่ระบบสูงสุด 180 วันใน URL เดิม แก้ QR เพื่อน ปรับเสียงแจ้งเตือน และปุ่มลำโพง Android
-- ยกเลิกระบบต่อสู้/ผจญภัยตามคำขอ คงสัตว์เลี้ยงและการดูแลไว้
+- APK รุ่นทดสอบ Android (`versionCode 22`) พร้อมดาวน์โหลดจาก GitHub Release
+- workflow สร้างไฟล์ APK โดยตั้งชื่อตาม tag ของรุ่น
+- ระบบงานสร้างวิดีโอฝั่งเซิร์ฟเวอร์ผ่าน ComfyUI และ workflow ส่วนตัวของเจ้าของ เมื่อผู้ใช้ยินยอมและประมวลผลเสร็จ วิดีโอจะลงไทม์ไลน์ของเจ้าของงาน
+- ปรับการสลับระบบเสียงพูด เมื่อบริการสตรีมเสียงไม่รองรับ
+- อัปเดตไอคอนแอปและแบรนด์ PURE
 
-รายละเอียดและข้อจำกัดการทดสอบ: [บันทึกรุ่น 0.8.0](docs/UPDATE-0.7.md)
+## Run locally / เริ่มใช้งานในเครื่อง
 
-## เริ่มใช้งานบน Windows
+### Web server / เซิร์ฟเวอร์เว็บ
 
-1. รันออนไลน์ในคลิกเดียว: ดับเบิลคลิก `START-ONLINE.cmd` (สร้างลิงก์ HTTPS ฟรีผ่าน Cloudflare Tunnel ทันที ยิงเข้าแอปในมือถือได้เลย)
-   หรือรันเฉพาะในวงแลนด้วย `START-SERVER.cmd`
-2. เปิด http://localhost:3000 เพื่อสมัครบัญชี
-3. ติดตั้ง `dist/PURE-0.8.0-debug.apk` บน Android 8 ขึ้นไป โดยอนุญาตติดตั้งจากแหล่งที่มาเมื่อ Android ถาม
-4. ใน APK กรอก URL เซิร์ฟเวอร์ แล้วเชื่อมต่อ
-5. ให้เพื่อนสมัครบัญชีอีกบัญชี ค้นหา PURE ID ในแท็บเพื่อน → ส่งคำขอ → อีกฝ่ายรับคำขอ → เริ่มแชต
-
-สำหรับโทรศัพท์กับคอมใน Wi-Fi เดียวกัน ใช้ `http://<IP คอม>:3000` (ดู IPv4 ด้วย `ipconfig`)
-ต้องเปิดไฟร์วอลล์พอร์ต 3000 สำหรับเครือข่ายส่วนตัวเองถ้าถูกบล็อก โปรแกรมไม่แก้ไฟร์วอลล์อัตโนมัติ
-HTTP เหมาะกับการทดสอบแชตบน LAN เท่านั้น กล้อง/ไมค์ของ WebView ต้องใช้ secure context: HTTPS หรือ localhost
-บน Android emulator ใช้ `http://10.0.2.2:3000` สำหรับทดสอบแชต
-
-เซิร์ฟเวอร์เก็บฐานข้อมูลและไฟล์ใน `data/`; ปิดเซิร์ฟเวอร์ก่อนสำรองทั้งโฟลเดอร์ ห้ามลบถ้าต้องการรักษาบัญชีและแชต
-ปิดหน้าต่างตัวรันหรือ Ctrl+C เพื่อหยุด ใช้พอร์ตอื่นได้ด้วย `PORT` ใน `.env`
-
-## ออฟไลน์: ไม่ใช้เซิร์ฟเวอร์ ไม่ใช้อินเทอร์เน็ต
-
-เปิด APK → **ออฟไลน์** ทั้งสองเครื่อง ข้อความโหมดนี้แยกจากบัญชีออนไลน์และไม่ซิงก์ย้อนหลัง
-
-### Wi-Fi หรือฮอตสปอตมือถือ
-1. เชื่อมมือถือทั้งสองเข้าวง Wi-Fi เดียวกัน หรือให้เครื่องหนึ่งเปิดฮอตสปอตแล้วอีกเครื่องเชื่อม
-2. เครื่องแรกกด **สร้างห้อง Wi-Fi** จะแสดง IP และรหัสจับคู่ 6 หลัก
-3. เครื่องที่สองกด **เข้าห้อง Wi-Fi** กรอก IP และรหัสจากเครื่องแรก
-4. เมื่อแสดง “เชื่อมต่อแล้ว” ให้ส่งข้อความได้ทันที ป้าย “ถึงเครื่องเพื่อนแล้ว” แสดงเมื่อได้รับการยืนยันจากอีกเครื่อง
-5. กดปิดห้องเมื่อเสร็จ; ต้องเปิดหน้าออฟไลน์ค้างไว้ทั้งสองเครื่อง
-
-ไม่ได้ใช้ Wi-Fi Direct discovery: ต้องอยู่ Wi-Fi/ฮอตสปอตเดียวกันและกรอก IP
-ถ้าเราเตอร์เปิด AP/client isolation หรือระบบฮอตสปอตห้ามเครื่องในวงคุยกัน โหมดนี้เชื่อมไม่ได้
-
-### Bluetooth
-1. เปิด Bluetooth และจับคู่มือถือทั้งสองในตั้งค่า Android ก่อน
-2. เครื่องแรกกด **รอรับ Bluetooth** แล้วบอกรหัส PURE ที่แสดง
-3. อีกเครื่องกด **เชื่อม Bluetooth** เลือกชื่อเครื่องแรก แล้วกรอกรหัส PURE
-4. อนุญาต “อุปกรณ์ใกล้เคียง” เมื่อ Android ขอ แล้วกดปุ่มอีกครั้ง
-
-Bluetooth ใช้ secure RFCOMM และบริการ UUID ของ PURE จึงต้องติดตั้งแอปเดียวกัน
-ทั้ง Wi-Fi และ Bluetooth ใช้ ECDH + AES-GCM และรหัสจับคู่ในระดับแอป แต่ยังไม่ได้ผ่านการตรวจสอบ cryptography อิสระ
-ห้ามตีความรหัสสั้นนี้ว่าเหมาะกับข้อมูลลับความเสี่ยงสูง ไม่ใช่ระบบยืนยันตัวตนบัญชีออนไลน์
-โหมดออฟไลน์ 0.1 รองรับ **ข้อความตัวต่อตัวเท่านั้น** ยังไม่มีไฟล์ โทร หรือเกมหลายคน
-ไม่เก็บประวัติออฟไลน์ถาวร: ปิดหน้าแล้วข้อความหาย
-
-## เปิดใช้ผ่านอินเทอร์เน็ตและโทร
-
-เตรียม public server/domain ชี้ DNS มาที่เครื่อง และเปิด 80/443:
-
-```sh
-cp .env.example .env
-# ตั้งค่าใน .env ตามด้านล่างก่อนรัน
-docker compose --profile https up -d --build
-```
-
-```dotenv
-PURE_DOMAIN=pure.example.com
-PUBLIC_ORIGIN=https://pure.example.com
-COOKIE_SECURE=true
-TURN_URL=turn:turn.example.com:3478?transport=udp,turn:turn.example.com:3478?transport=tcp
-TURN_SECRET=<shared-secret ของ coturn>
-```
-
-`docs/turnserver.conf.example` เป็นตัวอย่าง coturn; ต้องตั้ง public IP, secret, realm และเปิดพอร์ต relay
-เซิร์ฟเวอร์ออก TURN credentials อายุหนึ่งชั่วโมงหลังเข้าสู่ระบบ ไม่ส่ง shared secret ให้แอป
-ถ้าไม่มี TURN บางเครือข่ายจะโทรได้ แต่ไม่รับรองข้ามเครือข่ายมือถือ/NAT
-ข้อมูลเสียง/วิดีโอใช้ WebRTC; กล้องและไมค์ต้องได้รับอนุญาตจากผู้ใช้
-สายเรียกเข้า 0.1 ทำงานขณะเปิดแอปและเชื่อมต่ออยู่ ไม่มี FCM หรือโทรปลุกแอปที่ปิดอยู่
-
-## Gemini และการสแกนโมเดลอัตโนมัติ
-
-สร้าง/เปลี่ยนคีย์ใน Google AI Studio แล้วใส่ **คีย์ใหม่** ใน `.env` เท่านั้น คีย์ที่เคยส่งในแชตไม่ถูกฝังหรือคัดลอกลงโปรเจกต์
-
-```dotenv
-GEMINI_API_KEY=<new-key>
-GEMINI_MODEL=<ชื่อโมเดลที่อนุมัติให้ใช้>
-GEMINI_FALLBACK_MODEL=<ชื่อโมเดลสำรอง หรือปล่อยว่าง>
-```
-
-รีสตาร์ตเซิร์ฟเวอร์หลังเปลี่ยนค่า เซิร์ฟเวอร์ดึง `models.list` ทุก 24 ชั่วโมง รองรับ pagination
-ดู catalog และสถานะสแกนในหน้าโปรไฟล์ เลือกรุ่นที่รองรับ generateContent และข้อความ
-การสแกนไม่เรียก generation ไม่ทดลองทุกโมเดลแบบเสียเงิน และไม่เปลี่ยนรุ่นใช้งานเองโดยเงียบ
-เมื่อผู้ใช้ส่ง prompt จึงเรียกโมเดลที่ตั้งไว้ ถ้าล้มเหลวจึงลอง fallback ที่ผู้ดูแลตั้ง
-ส่งเฉพาะ prompt ที่ผู้ใช้กรอก ไม่อ่านประวัติแชตเอง ไม่มี key ส่งไปยัง APK/เบราว์เซอร์
-ยังไม่ได้ทดสอบเรียก Gemini จริงโดยไม่มีคีย์ใหม่ที่ใช้งานได้; unit test ใช้ API จำลอง
-
-## โครงโปรเจกต์และทดสอบ
-
-- `docs/PLAN.md` — แผนงาน, ดีไซน์, ขอบเขตเวอร์ชันแรกและงานถัดไป
-- `public/` — หน้าจอ responsive, Canvas pet, WebRTC client
-- `server/` — API, Socket.IO, SQLite, Gemini
-- `android/` — APK shell, permission handling และ Nearby แบบ native
-- `tests/` — integration, UI/WebRTC, encrypted offline channel
+Requirements: Node.js 24 or newer. / ต้องใช้ Node.js 24 ขึ้นไป
 
 ```sh
 npm ci
-npm test
-node tests/ui.mjs
+cp .env.example .env
+npm start
 ```
 
-UI test ใช้ Google Chrome ที่ติดตั้งในเครื่องและกล้อง/ไมค์จำลอง สร้างบัญชีในฐานข้อมูลชั่วคราวแล้วล้างหลังทดสอบ
-สร้าง APK บนเครื่องนี้ด้วย `powershell -ExecutionPolicy Bypass -File scripts/build-android.ps1`
-หรือเปิด `android/` ใน Android Studio (JDK 17, SDK 35, AGP 8.9.1, Gradle 8.11.1)
-APK เป็น debug build สำหรับติดตั้งทดสอบ ยังไม่ใช่ release ที่เซ็นด้วย production key
+Open `http://localhost:3000`. The server stores its database and uploaded files in `data/`; back up that folder before moving or reinstalling the server. The `.env` file contains private settings and must not be committed.
 
-## ข้อจำกัดที่ต้องทราบก่อนใช้งานจริง
+เปิด `http://localhost:3000` เซิร์ฟเวอร์เก็บฐานข้อมูลและไฟล์ที่อัปโหลดใน `data/` ควรสำรองโฟลเดอร์นี้ก่อนย้ายหรือติดตั้งเซิร์ฟเวอร์ใหม่ ไฟล์ `.env` มีค่าลับ ห้ามอัปโหลดเข้า repository
 
-- SQLite สำหรับเซิร์ฟเวอร์เดียว; จำกัดไฟล์ 25 MB ต่อไฟล์ / ประมาณ 250 MB ต่อบัญชี
-- แชต/ไฟล์ฝั่งเซิร์ฟเวอร์ไม่ได้ E2EE ผู้ดูแลอ่านได้; ใช้ HTTPS เพื่อป้องกันระหว่างส่ง
-- ยังไม่มี password recovery, group chat, avatar upload, QR, reaction/reply, reporting dashboard หรือ FCM
-- หน้าจอ Android ออนไลน์โหลดจากเซิร์ฟเวอร์; เมื่อเซิร์ฟเวอร์ปิดยังใช้ Nearby native ได้
-- ต้องทดสอบอุปกรณ์ Android จริงสองเครื่องสำหรับ Bluetooth, เสียง กล้อง และ Wi-Fi/4G ก่อนเปิด production
+### Android APK / สร้าง APK Android
 
-อ้างอิง: [Gemini Models API](https://ai.google.dev/api/models), [Android build JDK](https://developer.android.com/build/jdks), [Android command line tools](https://developer.android.com/studio)
+```powershell
+cd android
+./gradlew.bat assembleDebug
+```
+
+The APK is written to `android/app/build/outputs/apk/debug/app-debug.apk`. You need JDK 17+, Android SDK Platform 35, Build Tools 35.0.0, CMake 3.22.1, and NDK 27.2.12479018. Set `PURE_SERVER_URL` at build time to preconfigure the server address; otherwise users enter it in the app. Debug APKs are for testing and are not production-signed.
+
+ไฟล์ APK อยู่ที่ `android/app/build/outputs/apk/debug/app-debug.apk` ต้องมี JDK 17+, Android SDK Platform 35, Build Tools 35.0.0, CMake 3.22.1 และ NDK 27.2.12479018 ตั้ง `PURE_SERVER_URL` ตอน build เพื่อกำหนดเซิร์ฟเวอร์เริ่มต้น หรือให้ผู้ใช้กรอก URL ในแอป APK แบบ debug ใช้ทดสอบและยังไม่ได้เซ็นสำหรับเผยแพร่จริง
+
+### Server deployment / นำเซิร์ฟเวอร์ขึ้นใช้งาน
+
+GitHub Pages hosts static web assets only; it does not run the PURE API, Socket.IO, SQLite, scheduled jobs, ComfyUI, or uploaded-file storage. Deploy the server to a host that supports Node.js or Docker, give it a permanent HTTPS origin, and configure secrets on that host. See the [environment example](.env.example) and [server setup plan](docs/PLAN.md).
+
+GitHub Pages ให้บริการไฟล์เว็บแบบ static เท่านั้น ไม่ได้รัน PURE API, Socket.IO, SQLite, งานตามเวลา, ComfyUI หรือจัดเก็บไฟล์อัปโหลด ต้องนำเซิร์ฟเวอร์ไปไว้บนเครื่องที่รองรับ Node.js หรือ Docker ตั้ง HTTPS แบบถาวร และเก็บ secrets ไว้บนเซิร์ฟเวอร์ ดู [ตัวอย่าง environment](.env.example) และ [แผนตั้งค่าเซิร์ฟเวอร์](docs/PLAN.md)
+
+## Roadmap / แผนพัฒนาต่อ
+
+The roadmap prioritizes safety and reliability before adding more visible features. Each milestone should pass its release checks before moving to the next. Items that require Firebase, a public TURN service, domain DNS access, or physical Android devices are marked as dependencies.
+
+แผนพัฒนาให้ความสำคัญกับความปลอดภัยและความเสถียรก่อนเพิ่มฟีเจอร์ใหม่ แต่ละระยะจะผ่านเกณฑ์ก่อนปล่อยรุ่นถัดไป งานที่ต้องใช้ Firebase, TURN สาธารณะ, สิทธิ์จัดการ DNS หรือมือถือ Android สำหรับทดสอบจะระบุเงื่อนไขไว้
+
+### Now — 0.12.x: Secure launch / ระยะนี้ — เปิดใช้งานให้ปลอดภัย
+
+- Fix the HTTPS certificate and DNS/custom-domain configuration for `call.purefxai.store`; verify the certificate covers the exact hostname before sign-in is enabled.
+- Keep the public web client and API server origins explicit; verify login, media, WebSocket, and WebRTC signaling through HTTPS.
+- Publish the v0.12.0 APK and release notes; keep the local workflow JSON, `.env`, uploaded media, and signing keys out of Git.
+- Add backup/restore guidance and a server health page that reports actionable status without exposing secrets.
+
+- แก้ DNS และใบรับรอง HTTPS ของ `call.purefxai.store` และตรวจว่าใบรับรองครอบคลุม hostname จริงก่อนเปิดให้เข้าสู่ระบบ
+- กำหนด URL ของเว็บและ API ให้ชัด ทดสอบล็อกอิน ไฟล์ WebSocket และสัญญาณโทรผ่าน HTTPS
+- เผยแพร่ APK และ release notes ของ 0.12.0 โดยไม่นำ workflow JSON ส่วนตัว, `.env`, สื่อของผู้ใช้ หรือ signing key เข้า Git
+- เพิ่มคู่มือสำรอง/กู้คืนข้อมูล และหน้าเช็กสุขภาพเซิร์ฟเวอร์ที่แสดงสถานะที่แก้ได้โดยไม่เปิดเผย secrets
+
+### Next — 0.13: Social polish / ถัดไป — ทำระบบสังคมให้ครบ
+
+- Separate text posts, photo posts, and Reels in feed navigation; improve media preview, zoom, and download behavior.
+- Finish profiles: friend/follower counts, cover-image editing, privacy controls, and a clear public/private profile state.
+- Complete group lifecycle: invite, accept/decline, member roles, admin/moderation actions, and leaving a group.
+- Improve stories with a clear expiry period and viewer controls; improve comment threads, reply mentions, profile photos, and reactions.
+- Make message translation reliably automatic, with source/translated/both display modes and readable language names.
+- Add real-time typing indicators and per-account notification/ringtone settings.
+
+- แยกเมนูโพสต์ข้อความ รูป และ Reels พร้อมปรับการดูตัวอย่าง ซูม และดาวน์โหลดสื่อ
+- ทำโปรไฟล์ให้ครบ: จำนวนเพื่อน/ผู้ติดตาม เปลี่ยนภาพปก ตั้งค่าความเป็นส่วนตัว และบอกสถานะโปรไฟล์สาธารณะ/ส่วนตัวให้ชัด
+- ทำวงจรกลุ่มให้ครบ: เชิญ รับ/ปฏิเสธคำเชิญ บทบาทสมาชิก เครื่องมือแอดมิน/ผู้ดูแล และออกจากกลุ่ม
+- ปรับ Story ให้กำหนดวันหมดอายุและควบคุมผู้ชมได้ พร้อมคอมเมนต์ซ้อน แท็กตอบกลับ รูปโปรไฟล์ และอารมณ์
+- ทำให้การแปลข้อความอัตโนมัติเสถียร พร้อมโหมดแสดงต้นฉบับ/คำแปล/ทั้งคู่ และชื่อภาษาที่อ่านเข้าใจง่าย
+- เพิ่มสถานะกำลังพิมพ์แบบเรียลไทม์ และแยกเสียงแจ้งเตือน/เสียงเรียกเข้าตามบัญชี
+
+### 0.14: JEV assistant / ผู้ช่วย JEV
+
+- Keep JEV as a background task router: classify the request, select an available provider, and fall back from Gemini to local Ollama when configured.
+- Bring context-aware `@pure` help into chats, groups, timeline posts, and comments; only use the specific conversation or post context the user invokes.
+- Offer concise summaries of selected chats and documents, with user consent and a clear preview of what context is sent to an online provider.
+- Show decision cards when details are missing or an action needs approval; do not silently send messages, create reminders, or make purchases.
+- Add optional per-user memory controls: inspect, correct, pause, and delete remembered facts.
+
+- ให้ JEV ทำงานเบื้องหลังเพื่อคัดกรองคำขอ เลือกผู้ให้บริการที่พร้อม และสลับจาก Gemini ไป Ollama ในเครื่องเมื่อมีการตั้งค่า
+- เรียก `@pure` ให้เข้าใจบริบทในแชต กลุ่ม โพสต์ และคอมเมนต์ โดยใช้เฉพาะบริบทที่ผู้ใช้เรียกมาช่วย
+- สรุปแชตหรือเอกสารที่เลือกได้ โดยขอความยินยอมและแสดงตัวอย่างบริบทที่จะส่งไปยังผู้ให้บริการออนไลน์
+- แสดงตัวเลือกเมื่อข้อมูลไม่ครบหรือต้องอนุมัติก่อน ห้ามส่งข้อความ สร้างการเตือน หรือซื้อของเองโดยไม่แจ้ง
+- เพิ่มการควบคุมความจำรายผู้ใช้: ดู แก้ หยุดใช้ และลบข้อมูลที่จำไว้ได้
+
+### 0.15: Calls and notifications / โทรและแจ้งเตือน
+
+- Validate audio/video calls on real Android devices across Wi-Fi and mobile networks; deploy and monitor TURN before promising cross-network reliability.
+- Separate microphone, speaker, ringtone, and message notification controls; handle Android audio focus and Bluetooth headsets.
+- Add push notifications and incoming-call wakeups only after a Firebase project, app signing, and device testing are available.
+- Provide call quality diagnostics that show connection state and recovery steps without exposing call content.
+
+- ทดสอบโทรเสียง/วิดีโอบนมือถือ Android จริงทั้ง Wi-Fi และเครือข่ายมือถือ ติดตั้งและเฝ้าระวัง TURN ก่อนรับรองการโทรข้ามเครือข่าย
+- แยกการควบคุมไมค์ ลำโพง เสียงเรียกเข้า และแจ้งเตือนข้อความ พร้อมจัดการ audio focus และหูฟัง Bluetooth
+- เพิ่ม push notification และปลุกหน้าจอเมื่อมีสายเข้า หลังมี Firebase project, การเซ็นแอป และทดสอบบนอุปกรณ์จริง
+- แสดงสถานะคุณภาพการโทรและวิธีแก้การเชื่อมต่อ โดยไม่เปิดเผยเนื้อหาสาย
+
+### 0.16+: Creator tools and scale / ระยะต่อไป: เครื่องมือผู้สร้างและรองรับผู้ใช้
+
+- Add user-created sticker packs with safe uploads, previews, moderation, and attribution.
+- Expand groups with product posts, seller profiles, pinned posts, and clear purchase/contact flows; do not process payments until a payment provider and policies are chosen.
+- Add opt-in AI video generation controls: prompt preview, queue/cancel status, storage limits, retention, and moderation before public posting.
+- Prepare production release signing, automated migration/backup checks, error monitoring, accessibility review, and load testing.
+
+- เพิ่มชุดสติกเกอร์ที่ผู้ใช้สร้างเอง พร้อมอัปโหลดอย่างปลอดภัย ดูตัวอย่าง ตรวจเนื้อหา และระบุเจ้าของงาน
+- ขยายกลุ่มด้วยโพสต์สินค้า โปรไฟล์ผู้ขาย ปักหมุด และช่องทางติดต่อ/สั่งซื้อที่ชัดเจน ยังไม่รับชำระเงินจนกว่าจะเลือกผู้ให้บริการและนโยบาย
+- เพิ่มการควบคุมสร้างวิดีโอ AI แบบสมัครใจ: ตรวจ prompt ดูคิว/ยกเลิก จำกัดพื้นที่ เก็บรักษา และตรวจเนื้อหาก่อนโพสต์สาธารณะ
+- เตรียมเซ็นแอปสำหรับ production ตรวจ migration/backup อัตโนมัติ เฝ้าระวัง error ตรวจ accessibility และทดสอบโหลด
+
+See [the full roadmap](docs/ROADMAP.md) for dependencies and release gates. / ดู [roadmap ฉบับเต็ม](docs/ROADMAP.md) สำหรับเงื่อนไขและเกณฑ์ก่อนปล่อยรุ่น
+
+## Project layout / โครงสร้างโปรเจกต์
+
+- `public/` — web client and static assets / เว็บแอปและไฟล์ static
+- `server/` — API, Socket.IO, SQLite, AI routing, and ComfyUI jobs / API, Socket.IO, SQLite, AI router และงาน ComfyUI
+- `android/` — Android app and native bridges / แอป Android และ native bridge
+- `tests/` — automated tests / ชุดทดสอบอัตโนมัติ
+- `docs/` — setup, deployment, release, and roadmap / คู่มือติดตั้ง deploy release และแผนพัฒนา
+
+## Safety notes / ข้อควรทราบ
+
+- Never commit `.env`, API keys, passwords, local workflow JSON, user data, or keystores.
+- Keep user consent explicit before sending profile photos to video-generation services or sending private chat context to online AI.
+- GitHub Pages is not the backend. A public production API requires a separately hosted server, HTTPS, storage, backups, and TURN for reliable calls.
+- The Android APK linked above is a debug build. A production release requires a protected signing key and device QA.
+
+- ห้าม commit `.env`, API key, รหัสผ่าน, workflow JSON ส่วนตัว, ข้อมูลผู้ใช้ หรือ keystore
+- ต้องขอความยินยอมก่อนส่งรูปโปรไฟล์ไปบริการสร้างวิดีโอ หรือส่งบริบทแชตส่วนตัวไป AI ออนไลน์
+- GitHub Pages ไม่ใช่ backend; API สำหรับใช้งานจริงต้องมีเซิร์ฟเวอร์ HTTPS, พื้นที่เก็บข้อมูล, backup และ TURN เพื่อให้โทรได้เสถียร
+- APK ที่ลิงก์อยู่เป็น debug build การปล่อย production ต้องใช้ signing key ที่เก็บปลอดภัยและผ่าน QA บนอุปกรณ์จริง
