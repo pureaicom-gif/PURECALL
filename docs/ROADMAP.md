@@ -1,6 +1,7 @@
 # PURE Product Roadmap / แผนพัฒนาผลิตภัณฑ์ PURE
 
-**Status date / วันที่สถานะ:** 4 November 2026 / 4 พฤศจิกายน 2569  
+**Status date / วันที่สถานะ:** 4 November 2026 / 4 พฤศจิกายน 2569
+
 **Current version / รุ่นปัจจุบัน:** [0.12.0](https://github.com/pureaicom-gif/PURECALL/releases/tag/v0.12.0)
 
 This plan turns the requested PURE features into release-sized work. Priorities can change with user feedback. A milestone is not complete until its release gate is met; a feature listed here is planned work, not a claim that it already exists.
@@ -31,7 +32,8 @@ This plan turns the requested PURE features into release-sized work. Priorities 
 
 ## P0 — Secure, stable launch / เปิดใช้งานอย่างปลอดภัยและเสถียร
 
-**Target / เป้าหมาย:** 0.12.x patch releases  
+**Target / เป้าหมาย:** 0.12.x patch releases
+
 **Priority / ลำดับ:** immediate / ทำก่อน
 
 ### Work / งาน
@@ -64,7 +66,8 @@ This plan turns the requested PURE features into release-sized work. Priorities 
 
 ## P1 — Social core / แกนระบบสังคม
 
-**Target / เป้าหมาย:** 0.13  
+**Target / เป้าหมาย:** 0.13
+
 **Priority / ลำดับ:** high / สูง
 
 - Feed tabs for text/photo posts and Reels; search and refresh state that preserve scroll position.
@@ -87,7 +90,8 @@ This plan turns the requested PURE features into release-sized work. Priorities 
 
 ## P2 — JEV personal assistant / ผู้ช่วยส่วนตัว JEV
 
-**Target / เป้าหมาย:** 0.14  
+**Target / เป้าหมาย:** 0.14
+
 **Priority / ลำดับ:** high / สูง
 
 - JEV is an internal router and task classifier, not a model choice shown to users. Use Gemini first when configured; fall back to local Ollama when available; return a clear unavailable state when neither is ready.
@@ -108,8 +112,10 @@ This plan turns the requested PURE features into release-sized work. Priorities 
 
 ## P3 — Calls and notifications / ระบบโทรและแจ้งเตือน
 
-**Target / เป้าหมาย:** 0.15  
-**Dependencies / เงื่อนไข:** public TURN endpoint; Firebase project and Android app registration for push  
+**Target / เป้าหมาย:** 0.15
+
+**Dependencies / เงื่อนไข:** public TURN endpoint; Firebase project and Android app registration for push
+
 **เงื่อนไข:** TURN ที่เข้าถึงได้; Firebase project และลงทะเบียน Android app เพื่อใช้ push
 
 - Test one-to-one audio/video calls on at least two Android devices over same Wi-Fi, separate Wi-Fi, and mobile data.
@@ -126,7 +132,8 @@ This plan turns the requested PURE features into release-sized work. Priorities 
 
 ## P4 — Groups, creators, and marketplace / กลุ่ม ผู้สร้าง และตลาดสินค้า
 
-**Target / เป้าหมาย:** 0.16+  
+**Target / เป้าหมาย:** 0.16+
+
 **Priority / ลำดับ:** after safety and core social / หลังระบบปลอดภัยและ social core
 
 - Group product posts with seller profile, product images, price/currency, stock status, contact method, and report/block tools.
