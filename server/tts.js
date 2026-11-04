@@ -74,7 +74,7 @@ export function createTts({ url = process.env.DRAMA3_URL || 'http://127.0.0.1:78
     const t0 = Date.now(); let first = 0;
     const r = await fetcher(backend + '/v1/audio/speech', { method: 'POST', headers: { 'content-type': 'application/json' }, signal: signal || AbortSignal.timeout(timeoutMs),
       body: JSON.stringify({ model: 'drama3', input: text, response_format: 'pcm', stream: true, stream_format: 'audio', options: { ...FAST_OPTIONS(text), references } }) });
-    if (!r.ok || !r.body) throw Object.assign(new Error('drama3 stream HTTP ' + r.status), { status: 502 });
+    if (!r.ok || !r.body) throw Object.assign(new Error('drama3 stream HTTP ' + r.status), { status: r.status === 501 ? 501 : 502 });
     const parts = []; let n = 0;
     for await (const c of r.body) { const b = Buffer.from(c); if (!first) first = Date.now() - t0; parts.push(b); n += b.length; onChunk(b); }
     if (n < 2) throw Object.assign(new Error('drama3 empty audio'), { status: 502 });

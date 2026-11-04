@@ -1,4 +1,5 @@
 node_modules/
+public/downloads/*.apk
 .env
 data/
 tools/

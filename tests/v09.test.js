@@ -40,11 +40,11 @@ test('migrations are versioned and idempotent; sniffing and validators',()=>{
 
 test('healthz, security headers, JSON errors without stacks',async t=>{
  const {req,base}=await boot(t);
- const h=await req('/healthz');assert.equal(h.status,200);assert.equal(h.data.ok,true);assert.equal(h.data.version,'0.9.0');
+ const h=await req('/healthz');assert.equal(h.status,200);assert.equal(h.data.ok,true);assert.equal(h.data.version,'0.12.0');
  assert.match(h.headers.get('content-security-policy'),/frame-ancestors 'none'/);assert.match(h.headers.get('content-security-policy'),/worker-src 'self'/);
  assert.equal(h.headers.get('x-powered-by'),null);
  const bad=await fetch(base+'/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:'{oops'});assert.equal(bad.status,400);const body=await bad.text();assert.doesNotMatch(body,/at |SyntaxError/);
- const r=await req('/api/health');assert.equal(r.data.version,'0.9.0');
+ const r=await req('/api/health');assert.equal(r.data.version,'0.12.0');
 });
 
 test('E2E: public-key directory, ciphertext-only storage, legacy plaintext still works',async t=>{

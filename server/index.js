@@ -54,7 +54,7 @@ export function createPureServer(options={}) {
   if(process.env.TRUST_PROXY)app.set('trust proxy',process.env.TRUST_PROXY==='true'?1:process.env.TRUST_PROXY);
   app.use(requestLogger(log));
   app.use(helmet({contentSecurityPolicy:{directives:{defaultSrc:["'self'"],scriptSrc:["'self'"],styleSrc:["'self'"],styleSrcAttr:["'unsafe-inline'"],imgSrc:["'self'",'blob:','data:'],mediaSrc:["'self'",'blob:'],connectSrc:["'self'"],workerSrc:["'self'"],manifestSrc:["'self'"],objectSrc:["'none'"],frameAncestors:["'none'"],baseUri:["'self'"],formAction:["'self'"],upgradeInsecureRequests:null}},crossOriginEmbedderPolicy:false,strictTransportSecurity:!!origin}));
-  app.get('/healthz',(req,res)=>{try{db.prepare('SELECT 1').get();res.set('Cache-Control','no-store').json({ok:true,version:'0.9.0',uptime:Math.round(process.uptime()),sockets:io.engine.clientsCount});}catch(e){res.status(503).json({ok:false});}});
+  app.get('/healthz',(req,res)=>{try{db.prepare('SELECT 1').get();res.set('Cache-Control','no-store').json({ok:true,version:'0.12.0',uptime:Math.round(process.uptime()),sockets:io.engine.clientsCount});}catch(e){res.status(503).json({ok:false});}});
   app.use(express.json({limit:'64kb'}));
   app.get('/download/pure.apk',(req,res)=>{
     res.set('Cache-Control','public, max-age=3600');
@@ -200,7 +200,7 @@ export function createPureServer(options={}) {
   app.get('/api/admin/system',auth,adminOnly,(req,res)=>{
     const rd=f=>{try{return JSON.parse(readFileSync(join(dataDir,f),'utf8'));}catch{return null;}};
     let pets=[];try{pets=readdirSync(join(root,'public','pets')).filter(f=>f.endsWith('.webm'));}catch{}
-    res.set('Cache-Control','no-store').json({version:'0.9.0',release:rd('version.json'),server:rd('server.json'),
+    res.set('Cache-Control','no-store').json({version:'0.12.0',release:rd('version.json'),server:rd('server.json'),
       cluster:options.cluster?.status?.()||{enabled:false,node:process.env.PURE_NODE_ID||'single',role:'primary'},
       tts:tts.stats(),pets:{videos:pets,count:one('SELECT COUNT(*) n FROM pets').n},banned:one('SELECT COUNT(*) n FROM users WHERE banned=1').n,
       ads:{managedIn:'purefxaidev/purecall-web ads.js'},uptime:Math.round(process.uptime()),memoryMb:Math.round(process.memoryUsage().rss/1048576),node:process.version});
@@ -582,12 +582,12 @@ export function createPureServer(options={}) {
   });
   const tts=options.tts||createTts({dataDir,fetcher:options.ttsFetch});
   installTts(app,{tts,auth,adminOnly,limiter:rateLimit({windowMs:60_000,limit:120,standardHeaders:'draft-7',legacyHeaders:false}),studioLimiter:rateLimit({windowMs:60_000,limit:Number(process.env.STUDIO_RATE||20),standardHeaders:'draft-7',legacyHeaders:false,message:{error:'studio rate limited'}})});
-  installComfy(app,{comfy,auth,adminOnly,limiter:rateLimit({windowMs:60_000,limit:Number(process.env.COMFY_RATE||10),standardHeaders:'draft-7',legacyHeaders:false,keyGenerator:req=>req.user.id,message:{error:'comfy rate limited'}})});
+  installComfy(app,{comfy,auth,adminOnly,db,dataDir,limiter:rateLimit({windowMs:60_000,limit:Number(process.env.COMFY_RATE||10),standardHeaders:'draft-7',legacyHeaders:false,keyGenerator:req=>req.user.id,message:{error:'comfy rate limited'}})});
   if(typeof options.extendApp==='function')options.extendApp(app,{db,dataDir});
   // v0.9 in-app update + server discovery
   app.get('/api/app-config',(_,res)=>res.json({updateManifestUrl:process.env.UPDATE_MANIFEST_URL||'https://call.purefxai.store/version.json',githubReleaseApi:process.env.UPDATE_GITHUB_RELEASE_API||'https://api.github.com/repos/purefxaidev/purecall-web/releases/latest',primaryOrigin:process.env.PRIMARY_ORIGIN||'https://api.purefxai.store',serverJsonUrl:process.env.SERVER_JSON_URL||'https://raw.githubusercontent.com/purefxaidev/purecall-web/main/server.json',checkIntervalHours:6}));
   for(const name of ['version.json','server.json'])app.get('/'+name,(_,res)=>{const f=join(dataDir,name);if(!existsSync(f))return res.status(404).json({error:'not published'});res.set('Cache-Control','no-cache').type('json').send(readFileSync(f,'utf8'));});
-  app.get('/api/health',(_,res)=>res.json({ok:true,name:'PURE',version:'0.9.0'}));
+  app.get('/api/health',(_,res)=>res.json({ok:true,name:'PURE',version:'0.12.0'}));
   app.use('/api',(req,res)=>res.status(404).json({error:'ไม่พบ API'}));
   app.use(express.static(join(root,'public'),{etag:true,maxAge:'10m',setHeaders(res,p){if(/\.(html|json)$/.test(p)||/sw\.js$/.test(p))res.setHeader('Cache-Control','no-cache');else if(/\/(vendor|fonts)\//.test(p))res.setHeader('Cache-Control','public, max-age=604800');}}));
   app.use((err,req,res,next)=>{if(res.headersSent)return next(err);if(!err.status&&err.code!=='LIMIT_FILE_SIZE')log.error('unhandled',{path:req.path,error:err.message,stack:process.env.NODE_ENV==='production'?undefined:err.stack});if(err.type==='entity.parse.failed')return res.status(400).json({error:'JSON ไม่ถูกต้อง'});if(err.type==='entity.too.large')return res.status(413).json({error:'ข้อมูลใหญ่เกินไป'});res.status(err.status|| (err.code==='LIMIT_FILE_SIZE'?413:500)).json({error:err.code==='LIMIT_FILE_SIZE'?'ไฟล์ใหญ่เกิน 25 MB':err.status?err.message:'เกิดข้อผิดพลาด กรุณาลองอีกครั้ง'});});

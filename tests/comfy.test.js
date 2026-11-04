@@ -53,3 +53,55 @@ test('ComfyUI Studio: admin-only, generate, progress, gallery file, video workfl
     assert.equal(v.status, 200); assert.equal(posted.prompt['5'].inputs.text, 'dancing pet');
   } finally { await server.close(); }
 });
+
+test('profile AI video uses the owner avatar, is private per account, and publishes completed MP4 to that profile feed', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'pure-profile-video-')), wfDir = mkdtempSync(join(tmpdir(), 'pure-profile-wf-'));
+  const graph = {
+    '1': { class_type: 'PrimitiveStringMultiline', _meta: { title: 'Input Text (Prompt)' }, inputs: { value: 'old prompt' } },
+    '2': { class_type: 'LoadImage', _meta: { title: 'Load Image' }, inputs: { image: 'old.png' } },
+    '3': { class_type: 'MiniMaxH3ReferenceToVideo', _meta: { title: 'MiniMax H3 Reference to Video' }, inputs: { prompt: ['1', 0], 'ref_images.ref_image_0': ['2', 0] } },
+  };
+  writeFileSync(join(wfDir, VIDEO_WORKFLOW + '.json'), JSON.stringify(graph));
+  let videoDone = false, posted = null;
+  const fake = async (url, init = {}) => {
+    const path = new URL(url).pathname, json = x => new Response(JSON.stringify(x), { status: 200, headers: { 'content-type': 'application/json' } });
+    if (path === '/system_stats') return json({ system: { comfyui_version: '0.42.5' }, devices: [{ name: 'GPU' }] });
+    if (path === '/queue') return json({ queue_running: videoDone ? [] : [[0, 'profile-video-1']], queue_pending: [] });
+    if (path === '/object_info/CheckpointLoaderSimple') return json({ CheckpointLoaderSimple: { input: { required: { ckpt_name: [[]] } } } });
+    if (path === '/upload/image') return json({ name: 'pure-avatar.png', subfolder: '', type: 'input' });
+    if (path === '/prompt') { posted = JSON.parse(init.body); return json({ prompt_id: 'profile-video-1' }); }
+    if (path === '/history/profile-video-1') return json(videoDone ? { 'profile-video-1': { status: { status_str: 'success' }, outputs: { 92: { videos: [{ filename: 'pure-profile.mp4', subfolder: '', type: 'output' }] } } } } : {});
+    if (path === '/view') return new Response(Buffer.from('fake-mp4'), { headers: { 'content-type': 'video/mp4' } });
+    return new Response('not found', { status: 404 });
+  };
+  const comfy = createComfy({ dataDir: dir, fetcher: fake, workflowDir: wfDir });
+  const server = createPureServer({ dataDir: dir, scan: false, comfy });
+  await server.adminReady;
+  await new Promise(r => server.http.listen(0, '127.0.0.1', r));
+  const base = 'http://127.0.0.1:' + server.http.address().port;
+  const req = async (path, body, cookie) => {
+    const r = await fetch(base + '/api' + path, { method: body ? 'POST' : 'GET', headers: { ...(body ? { 'Content-Type': 'application/json' } : {}), ...(cookie ? { Cookie: cookie } : {}) }, body: body ? JSON.stringify(body) : undefined });
+    const text = await r.text(); let data; try { data = JSON.parse(text); } catch { data = { raw: text }; }
+    return { status: r.status, cookie: r.headers.get('set-cookie')?.split(';')[0], data };
+  };
+  try {
+    const member = await req('/register', { handle: 'portraitowner', name: 'Portrait Owner', password: 'a-correct-password' });
+    const other = await req('/register', { handle: 'portraitother', name: 'Other User', password: 'a-correct-password' });
+    const owner = (await req('/me', null, member.cookie)).data.user;
+    server.db.prepare('INSERT INTO profile_media(owner,kind,mime,data,updated) VALUES(?,?,?,?,?)').run(owner.id, 'avatar', 'image/png', png, Date.now());
+    assert.equal((await req('/profile/ai-video/status', null, member.cookie)).data.ready, true);
+    assert.equal((await req('/profile/ai-video', { prompt: 'wave naturally', clientId: 'profile-test-1' }, member.cookie)).status, 400, 'consent is required');
+    const submitted = await req('/profile/ai-video', { prompt: 'wave naturally', caption: 'A little hello', clientId: 'profile-test-1', consent: true }, member.cookie);
+    assert.equal(submitted.status, 202);
+    assert.equal(posted.prompt['1'].inputs.value.includes('wave naturally'), true);
+    assert.equal(posted.prompt['2'].inputs.image, 'pure-avatar.png');
+    assert.equal((await req('/profile/ai-video/jobs/profile-video-1', null, other.cookie)).status, 404);
+    videoDone = true;
+    const published = await req('/profile/ai-video/jobs/profile-video-1', null, member.cookie);
+    assert.equal(published.data.published, true);
+    const feed = await req('/posts?owner=' + encodeURIComponent(owner.id), null, member.cookie);
+    assert.equal(feed.data.posts.length, 1);
+    assert.equal(feed.data.posts[0].kind, 'reel');
+    assert.match(feed.data.posts[0].text, /สร้างด้วย AI/);
+  } finally { await server.close(); }
+});

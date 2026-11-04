@@ -17,7 +17,7 @@ test('public APK download serves the local installer or redirects to the GitHub 
  else{assert.equal(response.status,200);assert.match(response.headers.get('content-type'),/application\/vnd\.android\.package-archive/);
   assert.match(response.headers.get('content-disposition'),/attachment; filename="PURE-\d+\.\d+\.\d+(-release)?\.apk"/);
   const apk=Buffer.from(await response.arrayBuffer());assert.ok(apk.length>100_000);assert.equal(apk.readUInt32LE(0),0x04034b50,'APK is a ZIP archive');}
- assert.match(await (await fetch(base+'/')).text(),/href="\/download\/pure\.apk" download="PURE-0\.9\.0\.apk"/);
+ assert.match(await (await fetch(base+'/')).text(),/href="\/download\/pure\.apk" download="PURE-0\.12\.0\.apk"/);
 });
 
 test('accounts, friendship, realtime, private files, calls, pet and session lifecycle',async t=>{

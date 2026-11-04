@@ -32,9 +32,9 @@ test('In-app admin: Drama3 admin-only, Voice Studio + history, ban, system statu
     assert.equal((await req('/me', null, boss.cookie)).data.user.role, 'admin');
     // studio
     const g = await req('/admin/tts/studio', { text: 'สวัสดีค่ะ ดิฉันคือเลขา', voice: 'hero.wav', quality: 'high' }, boss.cookie);
-    assert.equal(g.status, 200); assert.equal(g.headers.get('content-type'), 'audio/wav');
+    assert.equal(g.status, 200, JSON.stringify(g.data)); assert.equal(g.headers.get('content-type'), 'audio/wav');
     const id = g.headers.get('x-studio-id'); assert.ok(id);
-    const f = await req('/admin/tts/studio', { text: 'เร็วค่ะ', quality: 'fast' }, boss.cookie); assert.equal(f.status, 200);
+    const f = await req('/admin/tts/studio', { text: 'เร็วค่ะ', quality: 'fast' }, boss.cookie); assert.equal(f.status, 200, JSON.stringify(f.data));
     assert.equal((await req('/admin/tts/studio', { text: 'x', voice: '../etc' }, boss.cookie)).status, 400);
     const h = await req('/admin/tts/history', null, boss.cookie);
     assert.equal(h.data.items.length, 2); assert.equal(h.data.items[1].voice, 'hero.wav'); assert.equal(h.data.items[1].quality, 'high');
